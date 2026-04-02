@@ -135,11 +135,12 @@ jobs:
                           for vendor in ('nvd', 'redhat', 'ghsa'):
                               score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
                           if score > 0:  # Only report vulnerabilities with scores
-                            findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score))
-                  blocked = [f for f in findings if f[1] > threshold]
+                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score))
+
+          blocked = [finding for finding in findings if finding[1] > threshold]
           if blocked:
-                    print(f"CVE policy violation: {len(blocked)} high-risk vulnerabilities found (threshold: {threshold})")
-                    for cve, score in blocked[:5]:
+              print(f"CVE policy violation: {len(blocked)} high-risk vulnerabilities found (threshold: {threshold})")
+              for cve, score in blocked[:5]:
                   print(f"  - {cve}: {score}")
               raise SystemExit(1)
           else:
