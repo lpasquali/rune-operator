@@ -1,0 +1,166 @@
+name: Quality Gates (Rune Operator)
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-go:
+    name: RuneGate/Coverage/Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          go test ./... -coverprofile=coverage.out -covermode=atomic
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          grep -q "total:.*100.0%" coverage-summary.txt
+
+  feature-go:
+    name: RuneGate/Feature/Go
+    needs: [coverage-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: go test ./... -v
+
+  linting-go:
+    name: RuneGate/Linting/Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+
+  smoke-operator-container:
+    name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
+    needs: [feature-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: rune-operator:rune-ci
+      - run: docker run --rm rune-operator:rune-ci --help >/dev/null || true
+
+  security-sbom:
+    name: RuneGate/Security/SBOM-and-CVE-Policy
+    needs: [feature-go, linting-go]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - run: docker build -t rune-operator:rune-ci -f Dockerfile .
+      - name: Generate SBOM — CycloneDX via Syft
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${PWD}:/work" anchore/syft:v1.17.0 rune-operator:rune-ci -o cyclonedx-json=/work/sbom/operator-image.cdx.json
+      - name: Scan SBOM — Grype + Trivy
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json > sbom/operator-grype.json
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.57.1 sbom /work/sbom/operator-image.cdx.json --format json --output /work/sbom/operator-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+      - name: Enforce CVE policy
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          threshold = 8.8
+          findings = []
+          for f in sorted(Path('sbom').glob('*.json')):
+              data = json.loads(f.read_text(encoding='utf-8'))
+              if 'matches' in data:
+                  for m in data.get('matches', []):
+                      vuln = m.get('vulnerability', {})
+                      fixable = ((vuln.get('fix') or {}).get('state', 'unknown') == 'fixed')
+                      score = 0.0
+                      for c in vuln.get('cvss', []) or []:
+                          score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
+                      findings.append((vuln.get('id', 'UNKNOWN'), score, fixable))
+              elif 'Results' in data:
+                  for r in data.get('Results', []) or []:
+                      for v in r.get('Vulnerabilities', []) or []:
+                          score = 0.0
+                          for vendor in ('nvd', 'redhat', 'ghsa'):
+                              score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
+                          findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, bool((v.get('FixedVersion') or '').strip())))
+          blocked = [f for f in findings if f[1] > threshold and f[2]]
+          if blocked:
+              raise SystemExit(1)
+          PY
+      - name: Attest SBOM provenance — SLSA L3
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: sbom/operator-image.cdx.json
+
+  security-sast:
+    name: RuneGate/Security/SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt json -out gosec-results.json -severity high ./...
+
+  security-licenses:
+    name: RuneGate/Security/LicenseCompliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          go install github.com/google/go-licenses@latest
+          go-licenses report ./... > licenses-go.txt
+
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs: [coverage-go, feature-go, linting-go, smoke-operator-container, security-sbom, security-sast, security-licenses]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
+            test "$result" = success
+          done

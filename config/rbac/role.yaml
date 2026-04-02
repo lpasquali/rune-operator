@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rune-operator-manager-role
+rules:
+  - apiGroups: ["bench.rune.ai"]
+    resources: ["runebenchmarks"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["bench.rune.ai"]
+    resources: ["runebenchmarks/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets", "events"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
