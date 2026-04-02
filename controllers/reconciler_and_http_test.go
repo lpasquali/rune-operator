@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -49,6 +51,24 @@ func (c failingStatusClient) Status() client.StatusWriter {
 	return failingStatusWriter{err: c.err}
 }
 
+type failingListClient struct {
+	client.Client
+	err error
+}
+
+func (c failingListClient) List(context.Context, client.ObjectList, ...client.ListOption) error {
+	return c.err
+}
+
+type failingGetClient struct {
+	client.Client
+	err error
+}
+
+func (c failingGetClient) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	return c.err
+}
+
 func buildReconciler(t *testing.T, objs ...runtime.Object) (*RuneBenchmarkReconciler, *runtime.Scheme) {
 	t.Helper()
 	s := runtime.NewScheme()
@@ -70,6 +90,16 @@ func TestReconcileNotFound(t *testing.T) {
 	}
 	if res.Requeue || res.RequeueAfter != 0 {
 		t.Fatalf("unexpected requeue result: %+v", res)
+	}
+}
+
+func TestReconcileGetError(t *testing.T) {
+	r, _ := buildReconciler(t)
+	r.Client = failingGetClient{Client: r.Client, err: context.DeadlineExceeded}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected get error to be returned, got %v", err)
 	}
 }
 
@@ -247,10 +277,10 @@ func TestReconcileErrorAndBackoff(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:        ts.URL,
-			Workflow:          "wf",
-			BackoffSeconds:    7,
-			TimeoutSeconds:    1,
+			APIBaseURL:     ts.URL,
+			Workflow:       "wf",
+			BackoffSeconds: 7,
+			TimeoutSeconds: 1,
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -303,6 +333,56 @@ func TestReconcileFailsFastOnInvalidTokenSecretRef(t *testing.T) {
 	}
 	if updated.Status.LastRun.Status != "failed" || !strings.Contains(updated.Status.LastRun.Error, "namespace/name") {
 		t.Fatalf("expected invalid token secret ref to be persisted as a failed run, got %+v", updated.Status.LastRun)
+	}
+}
+
+func TestReconcileStatusUpdateErrorOnFailure(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "wf",
+		},
+	}
+	r, s := buildReconciler(t, obj)
+	r.Client = failingStatusClient{Client: r.Client, err: context.Canceled}
+	r.Scheme = s
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected failure-path status update error, got %v", err)
+	}
+}
+
+func TestReconcileContinuesWhenActiveScheduleSyncFails(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-sync"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "wf",
+			Suspend:    true,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	r.Client = failingListClient{Client: r.Client, err: context.DeadlineExceeded}
+
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected reconcile to continue after active schedule sync error, got %v", err)
+	}
+	if res.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected suspended requeue after sync error, got %v", res.RequeueAfter)
 	}
 }
 
@@ -412,6 +492,31 @@ func TestExecuteBenchmarkNonJSONBodyAndHTTPError(t *testing.T) {
 	obj.Spec.APIBaseURL = ts.URL + "/err"
 	if _, err := r.executeBenchmark(context.Background(), obj, 2*time.Second); err == nil {
 		t.Fatalf("expected HTTP status error")
+	}
+}
+
+func TestExecuteBenchmarkMarshalError(t *testing.T) {
+	oldMarshal := jsonMarshal
+	t.Cleanup(func() { jsonMarshal = oldMarshal })
+
+	jsonMarshal = func(any) ([]byte, error) {
+		return nil, &json.UnsupportedTypeError{Type: nil}
+	}
+
+	r, _ := buildReconciler(t)
+	obj := &benchv1alpha1.RuneBenchmark{Spec: benchv1alpha1.RuneBenchmarkSpec{APIBaseURL: "http://example.invalid", Workflow: "wf"}}
+
+	if _, err := r.executeBenchmark(context.Background(), obj, time.Second); err == nil || !strings.Contains(err.Error(), "failed to marshal request payload") {
+		t.Fatalf("expected marshal failure, got %v", err)
+	}
+}
+
+func TestSyncActiveSchedulesListError(t *testing.T) {
+	r, _ := buildReconciler(t)
+	r.Client = failingListClient{Client: r.Client, err: context.DeadlineExceeded}
+
+	if err := r.syncActiveSchedules(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected list error, got %v", err)
 	}
 }
 

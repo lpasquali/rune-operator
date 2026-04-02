@@ -41,6 +41,8 @@ var setupControllerWithManager = func(mgr ctrl.Manager, r *RuneBenchmarkReconcil
 		Complete(r)
 }
 
+var jsonMarshal = json.Marshal
+
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/finalizers,verbs=update
@@ -161,7 +163,7 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		"model":      obj.Spec.Model,
 		"ollama_url": obj.Spec.OllamaURL,
 	}
-	body, err := json.Marshal(payload)
+	body, err := jsonMarshal(payload)
 	if err != nil {
 		return record, fmt.Errorf("failed to marshal request payload: %w", err)
 	}

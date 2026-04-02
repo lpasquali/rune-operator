@@ -9,6 +9,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,8 +34,12 @@ type managerLike interface {
 }
 
 var (
+	getConfigOrDieFn = ctrl.GetConfigOrDie
+	buildManagerFn   = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
+		return ctrl.NewManager(cfg, options)
+	}
 	newManagerFn = func(s *runtime.Scheme, metricsAddr, probeAddr string, enableLeaderElection bool) (managerLike, error) {
-		return ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		return buildManagerFn(getConfigOrDieFn(), ctrl.Options{
 			Scheme:                 s,
 			Metrics:                server.Options{BindAddress: metricsAddr},
 			HealthProbeBindAddress: probeAddr,
@@ -42,17 +47,22 @@ var (
 			LeaderElectionID:       "rune-operator.bench.rune.ai",
 		})
 	}
-	setupReconcilerFn = func(mgr managerLike) error {
+	setupReconcilerWithManagerFn = func(reconciler *controllers.RuneBenchmarkReconciler, mgr managerLike) error {
 		ctrlMgr, ok := mgr.(ctrl.Manager)
 		if !ok {
 			return errors.New("manager does not implement controller-runtime manager")
 		}
-		return (&controllers.RuneBenchmarkReconciler{
+		return reconciler.SetupWithManager(ctrlMgr)
+	}
+	setupReconcilerFn = func(mgr managerLike) error {
+		return setupReconcilerWithManagerFn(&controllers.RuneBenchmarkReconciler{
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Recorder: mgr.GetEventRecorderFor("rune-benchmark-controller"),
-		}).SetupWithManager(ctrlMgr)
+		}, mgr)
 	}
+	addClientGoSchemeFn  = clientgoscheme.AddToScheme
+	addBenchSchemeFn     = benchv1alpha1.AddToScheme
 	setupSignalHandlerFn = ctrl.SetupSignalHandler
 	exitFn               = os.Exit
 )
@@ -113,10 +123,10 @@ func run(metricsAddr, probeAddr string, enableLeaderElection bool) error {
 
 func runtimeScheme() (*runtime.Scheme, error) {
 	s := runtime.NewScheme()
-	if err := clientgoscheme.AddToScheme(s); err != nil {
+	if err := addClientGoSchemeFn(s); err != nil {
 		return nil, err
 	}
-	if err := benchv1alpha1.AddToScheme(s); err != nil {
+	if err := addBenchSchemeFn(s); err != nil {
 		return nil, err
 	}
 	return s, nil

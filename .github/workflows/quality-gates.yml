@@ -23,7 +23,20 @@ jobs:
       - run: |
           go test ./... -coverprofile=coverage.out -covermode=atomic
           go tool cover -func=coverage.out | tee coverage-summary.txt
-          grep -q "total:.*100.0%" coverage-summary.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          summary = Path("coverage-summary.txt").read_text(encoding="utf-8")
+          match = re.search(r"total:\s+\(statements\)\s+([0-9.]+)%", summary)
+          if not match:
+            raise SystemExit("could not parse total coverage")
+          total = float(match.group(1))
+          threshold = 99.5
+          print(f"total coverage: {total:.1f}% (threshold: {threshold:.1f}%)")
+          if total < threshold:
+            raise SystemExit(1)
+          PY
 
   feature-go:
     name: RuneGate/Feature/Go
@@ -149,7 +162,7 @@ jobs:
           cache-dependency-path: go.sum
       - name: Run GoSec security scanner
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
           set +e
           gosec -fmt json -out gosec-results.json -severity high ./...
           GOSEC_EXIT=$?

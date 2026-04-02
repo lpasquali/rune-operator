@@ -9,8 +9,11 @@ import (
 	"testing"
 
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
+	"github.com/lpasquali/rune-operator/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
@@ -64,17 +67,109 @@ func TestRuntimeSchemeIncludesAPIs(t *testing.T) {
 	}
 }
 
+func TestRuntimeSchemeErrorBranches(t *testing.T) {
+	oldClientGo := addClientGoSchemeFn
+	oldBench := addBenchSchemeFn
+	t.Cleanup(func() {
+		addClientGoSchemeFn = oldClientGo
+		addBenchSchemeFn = oldBench
+	})
+
+	addClientGoSchemeFn = func(*runtime.Scheme) error { return errors.New("clientgoscheme") }
+	if _, err := runtimeScheme(); err == nil || !strings.Contains(err.Error(), "clientgoscheme") {
+		t.Fatalf("expected client-go scheme error, got %v", err)
+	}
+
+	addClientGoSchemeFn = oldClientGo
+	addBenchSchemeFn = func(*runtime.Scheme) error { return errors.New("benchscheme") }
+	if _, err := runtimeScheme(); err == nil || !strings.Contains(err.Error(), "benchscheme") {
+		t.Fatalf("expected benchmark scheme error, got %v", err)
+	}
+}
+
+func TestDefaultNewManagerFnUsesConfiguredOptions(t *testing.T) {
+	oldConfig := getConfigOrDieFn
+	oldBuild := buildManagerFn
+	t.Cleanup(func() {
+		getConfigOrDieFn = oldConfig
+		buildManagerFn = oldBuild
+	})
+
+	getConfigOrDieFn = func() *rest.Config { return &rest.Config{Host: "https://example.invalid"} }
+
+	called := false
+	buildManagerFn = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
+		called = true
+		if cfg == nil || cfg.Host != "https://example.invalid" {
+			t.Fatalf("unexpected config: %+v", cfg)
+		}
+		if options.Metrics.BindAddress != ":8080" {
+			t.Fatalf("unexpected metrics bind address: %q", options.Metrics.BindAddress)
+		}
+		if options.HealthProbeBindAddress != ":8081" {
+			t.Fatalf("unexpected probe bind address: %q", options.HealthProbeBindAddress)
+		}
+		if !options.LeaderElection {
+			t.Fatalf("expected leader election enabled")
+		}
+		if options.LeaderElectionID != "rune-operator.bench.rune.ai" {
+			t.Fatalf("unexpected leader election id: %q", options.LeaderElectionID)
+		}
+		return &fakeManager{}, nil
+	}
+
+	mgr, err := newManagerFn(runtime.NewScheme(), ":8080", ":8081", true)
+	if err != nil {
+		t.Fatalf("expected newManagerFn success, got %v", err)
+	}
+	if !called || mgr == nil {
+		t.Fatalf("expected buildManagerFn to be invoked")
+	}
+}
+
+func TestDefaultSetupReconcilerFnSuccessBranch(t *testing.T) {
+	oldSetup := setupReconcilerWithManagerFn
+	t.Cleanup(func() { setupReconcilerWithManagerFn = oldSetup })
+
+	called := false
+	setupReconcilerWithManagerFn = func(reconciler *controllers.RuneBenchmarkReconciler, mgr managerLike) error {
+		called = true
+		if reconciler == nil || reconciler.Recorder == nil {
+			t.Fatalf("expected reconciler with recorder")
+		}
+		if mgr == nil {
+			t.Fatalf("expected manager to be passed through")
+		}
+		return nil
+	}
+
+	if err := setupReconcilerFn(&fakeManager{}); err != nil {
+		t.Fatalf("expected setupReconcilerFn success, got %v", err)
+	}
+	if !called {
+		t.Fatalf("expected setupReconcilerWithManagerFn to be called")
+	}
+}
+
 func TestRun_ErrorBranchesAndSuccess(t *testing.T) {
 	oldNewMgr := newManagerFn
 	oldSetupRec := setupReconcilerFn
 	oldSignal := setupSignalHandlerFn
+	oldClientGo := addClientGoSchemeFn
 	t.Cleanup(func() {
 		newManagerFn = oldNewMgr
 		setupReconcilerFn = oldSetupRec
 		setupSignalHandlerFn = oldSignal
+		addClientGoSchemeFn = oldClientGo
 	})
 
 	setupSignalHandlerFn = func() context.Context { return context.Background() }
+
+	addClientGoSchemeFn = func(*runtime.Scheme) error { return errors.New("scheme-build") }
+	if err := run(":1", ":2", true); err == nil || !strings.Contains(err.Error(), "unable to build runtime scheme") {
+		t.Fatalf("expected runtime scheme build error, got %v", err)
+	}
+	addClientGoSchemeFn = oldClientGo
 
 	newManagerFn = func(*runtime.Scheme, string, string, bool) (managerLike, error) {
 		return nil, errors.New("new-manager")

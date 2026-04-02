@@ -8,6 +8,7 @@ import (
 
 	otlptrace "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -66,6 +67,29 @@ func TestSetupOTelShutdownErrorBranch(t *testing.T) {
 
 	shutdownTracerProvider = func(_ *sdktrace.TracerProvider, _ context.Context) error {
 		return errors.New("shutdown-failed")
+	}
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+	shutdown := SetupOTel("test-service")
+	if shutdown == nil {
+		t.Fatalf("expected shutdown function")
+	}
+	shutdown()
+}
+
+func TestSetupOTelResourceCreationErrorBranch(t *testing.T) {
+	oldResource := newResource
+	oldShutdown := shutdownTracerProvider
+	t.Cleanup(func() {
+		newResource = oldResource
+		shutdownTracerProvider = oldShutdown
+	})
+
+	newResource = func(context.Context, ...resource.Option) (*resource.Resource, error) {
+		return nil, errors.New("resource-failed")
+	}
+	shutdownTracerProvider = func(_ *sdktrace.TracerProvider, _ context.Context) error {
+		return nil
 	}
 
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
