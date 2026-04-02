@@ -1,6 +1,6 @@
-# Contributing to rune
+# Contributing to rune-operator
 
-First off, thank you for considering contributing to rune! It's people like you that make rune such a great tool.
+First off, thank you for considering contributing to rune-operator! It's people like you that make rune-operator such a great tool.
 
 ## Where do I go from here?
 
@@ -8,12 +8,13 @@ If you've noticed a bug or have a feature request, make one! It's generally best
 
 ## Fork & create a branch
 
-If this is something you think you can fix, then fork rune and create a branch with a descriptive name.
+If this is something you think you can fix, then fork rune-operator and create a branch with a descriptive name.
 
 ## Get the test suite running
 
-Make sure you're using a virtual environment and have installed all the dependencies.
-Run the existing tests to ensure everything is working correctly before you begin.
+Make sure you have Go installed (see `go.mod` for the required Go version).
+From the repository root, run `go test ./...` to ensure everything is working correctly before you begin.
+If you use `golangci-lint`, you can also run `golangci-lint run`.
 
 ## Implement your fix or feature
 
@@ -25,7 +26,7 @@ If you're adding a new benchmark suite, ensure it is fully reproducible and clea
 
 ## Make a Pull Request
 
-At this point, you should switch back to your master branch and make sure it's up to date with rune's master branch. Tests should pass on your branch.
+At this point, you should switch back to your local default branch (for example, `main` or `develop`) and make sure it's up to date. Tests should pass on your branch.
 
 ## Code of Conduct
 

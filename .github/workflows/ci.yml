@@ -65,4 +65,4 @@ jobs:
           load: true
           push: false
           tags: rune-operator:ci-local
-      - run: docker run --rm rune-operator:ci-local --help >/dev/null || true
+      - run: docker run --rm rune-operator:ci-local --help >/dev/null

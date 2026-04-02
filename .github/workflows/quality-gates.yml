@@ -68,7 +68,7 @@ jobs:
           load: true
           push: false
           tags: rune-operator:rune-ci
-      - run: docker run --rm rune-operator:rune-ci --help >/dev/null || true
+      - run: docker run --rm rune-operator:rune-ci --help >/dev/null
 
   security-sbom:
     name: RuneGate/Security/SBOM-and-CVE-Policy
@@ -110,12 +110,11 @@ jobs:
               if 'matches' in data:
                   for m in data.get('matches', []):
                       vuln = m.get('vulnerability', {})
-                      fixable = ((vuln.get('fix') or {}).get('state', 'unknown') == 'fixed')
                       score = 0.0
                       for c in vuln.get('cvss', []) or []:
                           score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
                       if score > 0:  # Only report vulnerabilities with scores
-                          findings.append((vuln.get('id', 'UNKNOWN'), score, fixable))
+                          findings.append((vuln.get('id', 'UNKNOWN'), score))
               elif 'Results' in data:
                   for r in data.get('Results', []) or []:
                       for v in r.get('Vulnerabilities', []) or []:
@@ -123,11 +122,11 @@ jobs:
                           for vendor in ('nvd', 'redhat', 'ghsa'):
                               score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
                           if score > 0:  # Only report vulnerabilities with scores
-                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, bool((v.get('FixedVersion') or '').strip())))
-          blocked = [f for f in findings if f[1] > threshold and f[2]]
+                            findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score))
+                  blocked = [f for f in findings if f[1] > threshold]
           if blocked:
-              print(f"CVE policy violation: {len(blocked)} high-risk fixable vulnerabilities found (threshold: {threshold})")
-              for cve, score, _ in blocked[:5]:
+                    print(f"CVE policy violation: {len(blocked)} high-risk vulnerabilities found (threshold: {threshold})")
+                    for cve, score in blocked[:5]:
                   print(f"  - {cve}: {score}")
               raise SystemExit(1)
           else:
@@ -159,12 +158,14 @@ jobs:
             echo "GoSec failed with unexpected exit code: $GOSEC_EXIT"
             exit $GOSEC_EXIT
           fi
-          # Report results if any were found
+          # Report results if any were found and fail on high-severity issues
           if [ -f gosec-results.json ]; then
             ISSUES=$(jq '.Issues | length' gosec-results.json)
             if [ "$ISSUES" -gt 0 ]; then
               echo "⚠ GoSec found $ISSUES security issues:"
               jq '.Issues[] | "  - \(.rule_id): \(.details) (severity: \(.severity))"' -r gosec-results.json
+              echo "❌ Failing job because GoSec reported high-severity issues."
+              exit 1
             fi
           fi
 

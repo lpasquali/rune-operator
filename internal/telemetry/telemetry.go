@@ -15,6 +15,7 @@ import (
 )
 
 var newOTLPTraceExporter = otlptracegrpc.New
+var newResource = resource.New
 var shutdownTracerProvider = func(tp *sdktrace.TracerProvider, ctx context.Context) error {
 	return tp.Shutdown(ctx)
 }
@@ -32,9 +33,13 @@ func SetupOTel(serviceName string) func() {
 		return func() {}
 	}
 
-	res, _ := resource.New(ctx,
+	res, err := newResource(ctx,
 		resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)),
 	)
+	if err != nil {
+		log.Printf("otel resource setup failed, using empty resource: %v", err)
+		res = resource.Empty()
+	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),

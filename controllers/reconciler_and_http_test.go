@@ -251,7 +251,6 @@ func TestReconcileErrorAndBackoff(t *testing.T) {
 			Workflow:          "wf",
 			BackoffSeconds:    7,
 			TimeoutSeconds:    1,
-			APITokenSecretRef: "badref",
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -272,6 +271,38 @@ func TestReconcileErrorAndBackoff(t *testing.T) {
 	}
 	if len(updated.Status.Conditions) == 0 || updated.Status.Conditions[0].Status != metav1.ConditionFalse {
 		t.Fatalf("expected ready=false condition, got %+v", updated.Status.Conditions)
+	}
+	if updated.Status.LastRun.Status != "failed" || updated.Status.LastRun.Error == "" {
+		t.Fatalf("expected failed last run with error recorded, got %+v", updated.Status.LastRun)
+	}
+}
+
+func TestReconcileFailsFastOnInvalidTokenSecretRef(t *testing.T) {
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:        "http://example.invalid",
+			Workflow:          "wf",
+			BackoffSeconds:    7,
+			TimeoutSeconds:    1,
+			APITokenSecretRef: "badref",
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("reconcile should not return an outer error, got %v", err)
+	}
+	if res.RequeueAfter != 7*time.Second {
+		t.Fatalf("expected backoff requeue 7s, got %v", res.RequeueAfter)
+	}
+
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("fetch updated object: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" || !strings.Contains(updated.Status.LastRun.Error, "namespace/name") {
+		t.Fatalf("expected invalid token secret ref to be persisted as a failed run, got %+v", updated.Status.LastRun)
 	}
 }
 
@@ -371,11 +402,11 @@ func TestExecuteBenchmarkNonJSONBodyAndHTTPError(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{Spec: benchv1alpha1.RuneBenchmarkSpec{APIBaseURL: ts.URL, Workflow: "wf", InsecureTLS: true}}
 
 	rec, err := r.executeBenchmark(context.Background(), obj, 2*time.Second)
-	if err != nil {
-		t.Fatalf("expected nil error on invalid JSON response, got %v", err)
+	if err == nil {
+		t.Fatalf("expected invalid JSON response error")
 	}
 	if rec.Status != "submitted" {
-		t.Fatalf("expected submitted status on invalid JSON branch, got %+v", rec)
+		t.Fatalf("expected record to remain submitted before reconcile failure handling, got %+v", rec)
 	}
 
 	obj.Spec.APIBaseURL = ts.URL + "/err"

@@ -43,7 +43,10 @@ func (f *fakeManager) Start(context.Context) error {
 }
 
 func TestRuntimeSchemeIncludesAPIs(t *testing.T) {
-	s := runtimeScheme()
+	s, err := runtimeScheme()
+	if err != nil {
+		t.Fatalf("runtimeScheme failed: %v", err)
+	}
 	if s == nil {
 		t.Fatalf("expected non-nil scheme")
 	}

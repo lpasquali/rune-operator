@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,6 +45,7 @@ var setupControllerWithManager = func(mgr ctrl.Manager, r *RuneBenchmarkReconcil
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 
 func (r *RuneBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if mgr == nil {
@@ -70,8 +72,16 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	logger := log.FromContext(ctx)
 	obj := &benchv1alpha1.RuneBenchmark{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
-		metrics.ReconcileTotal.WithLabelValues("not_found").Inc()
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		if apierrors.IsNotFound(err) {
+			metrics.ReconcileTotal.WithLabelValues("not_found").Inc()
+			_ = r.syncActiveSchedules(ctx)
+			return ctrl.Result{}, nil
+		}
+		metrics.ReconcileTotal.WithLabelValues("get_error").Inc()
+		return ctrl.Result{}, err
+	}
+	if err := r.syncActiveSchedules(ctx); err != nil {
+		logger.Error(err, "failed to refresh active schedule metric")
 	}
 
 	span.SetAttributes(
@@ -82,10 +92,8 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if obj.Spec.Suspend {
 		metrics.ReconcileTotal.WithLabelValues("suspended").Inc()
-		metrics.ActiveSchedules.Dec()
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	}
-	metrics.ActiveSchedules.Inc()
 
 	now := metav1.Now()
 	obj.Status.ObservedGeneration = obj.Generation
@@ -98,6 +106,10 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	run.DurationMillis = duration.Milliseconds()
 	run.CompletedAt = metav1.Now()
+	if err != nil {
+		run.Status = "failed"
+		run.Error = err.Error()
+	}
 	obj.Status.LastRun = run
 	obj.Status.History = append([]benchv1alpha1.RunRecord{run}, obj.Status.History...)
 	if len(obj.Status.History) > 20 {
@@ -110,7 +122,10 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		r.Recorder.Eventf(obj, "Warning", "RunFailed", "workflow run failed: %v", err)
 		logger.Error(err, "run failed")
 		metrics.ReconcileTotal.WithLabelValues("error").Inc()
-		_ = r.Status().Update(ctx, obj)
+		if statusErr := r.Status().Update(ctx, obj); statusErr != nil {
+			logger.Error(statusErr, "failed to update RuneBenchmark status after run failure")
+			return ctrl.Result{}, statusErr
+		}
 		return ctrl.Result{RequeueAfter: time.Duration(maxInt32(obj.Spec.BackoffSeconds, 60)) * time.Second}, nil
 	}
 
@@ -146,12 +161,19 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		"model":      obj.Spec.Model,
 		"ollama_url": obj.Spec.OllamaURL,
 	}
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return record, fmt.Errorf("failed to marshal request payload: %w", err)
+	}
 
 	clientHTTP := &http.Client{Timeout: timeout}
 	if obj.Spec.InsecureTLS {
 		// #nosec G402 -- explicit opt-in for lab/dev endpoints via RuneBenchmark.spec.insecureTLS
-		clientHTTP.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		if baseTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+			transport := baseTransport.Clone()
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+			clientHTTP.Transport = transport
+		}
 	}
 
 	requestURL := strings.TrimRight(obj.Spec.APIBaseURL, "/") + "/v1/jobs"
@@ -164,7 +186,11 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		req.Header.Set("X-Tenant-ID", obj.Spec.Tenant)
 	}
 
-	if token, tokenErr := r.readToken(ctx, obj); tokenErr == nil && token != "" {
+	token, tokenErr := r.readToken(ctx, obj)
+	if tokenErr != nil {
+		return record, tokenErr
+	}
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -181,13 +207,28 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 
 	var parsed map[string]any
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return record, nil
+		return record, fmt.Errorf("failed to parse RUNE API response as JSON: %w", err)
 	}
 	if id, ok := parsed["job_id"].(string); ok {
 		record.RunID = id
 	}
 	record.Status = "succeeded"
 	return record, nil
+}
+
+func (r *RuneBenchmarkReconciler) syncActiveSchedules(ctx context.Context) error {
+	var list benchv1alpha1.RuneBenchmarkList
+	if err := r.List(ctx, &list); err != nil {
+		return err
+	}
+	active := 0
+	for _, item := range list.Items {
+		if !item.Spec.Suspend {
+			active++
+		}
+	}
+	metrics.ActiveSchedules.Set(float64(active))
+	return nil
 }
 
 func (r *RuneBenchmarkReconciler) readToken(ctx context.Context, obj *benchv1alpha1.RuneBenchmark) (string, error) {

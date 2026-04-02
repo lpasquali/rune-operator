@@ -78,7 +78,10 @@ func main() {
 }
 
 func run(metricsAddr, probeAddr string, enableLeaderElection bool) error {
-	s := runtimeScheme()
+	s, err := runtimeScheme()
+	if err != nil {
+		return fmt.Errorf("unable to build runtime scheme: %w", err)
+	}
 
 	shutdownTelemetry := telemetry.SetupOTel("rune-operator")
 	defer shutdownTelemetry()
@@ -108,9 +111,13 @@ func run(metricsAddr, probeAddr string, enableLeaderElection bool) error {
 	return nil
 }
 
-func runtimeScheme() *runtime.Scheme {
+func runtimeScheme() (*runtime.Scheme, error) {
 	s := runtime.NewScheme()
-	_ = clientgoscheme.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
-	return s
+	if err := clientgoscheme.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	if err := benchv1alpha1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
