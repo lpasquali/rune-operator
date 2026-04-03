@@ -1,0 +1,6 @@
+coverage.out
+sbom/
+.venv/
+bin/
+dist/
+*.test

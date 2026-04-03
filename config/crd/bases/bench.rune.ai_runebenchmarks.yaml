@@ -1,0 +1,133 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: runebenchmarks.bench.rune.ai
+spec:
+  group: bench.rune.ai
+  names:
+    kind: RuneBenchmark
+    listKind: RuneBenchmarkList
+    plural: runebenchmarks
+    singular: runebenchmark
+    shortNames:
+      - rbm
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - jsonPath: .spec.workflow
+          name: Workflow
+          type: string
+        - jsonPath: .status.lastRun.status
+          name: LastRun
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - apiBaseUrl
+                - workflow
+              properties:
+                apiBaseUrl:
+                  type: string
+                apiTokenSecretRef:
+                  type: string
+                  description: namespace/name secret reference; key must be token
+                tenant:
+                  type: string
+                workflow:
+                  type: string
+                  enum:
+                    - run-ollama-instance
+                    - run-agentic-agent
+                    - run-benchmark
+                question:
+                  type: string
+                model:
+                  type: string
+                ollamaUrl:
+                  type: string
+                insecureTls:
+                  type: boolean
+                schedule:
+                  type: string
+                  description: Cron expression (minute precision)
+                suspend:
+                  type: boolean
+                timeoutSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 10
+                  maximum: 3600
+                backoffSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 5
+                  maximum: 3600
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                consecutiveFailures:
+                  type: integer
+                  format: int32
+                lastScheduleTime:
+                  type: string
+                  format: date-time
+                lastSuccessfulTime:
+                  type: string
+                  format: date-time
+                lastRun:
+                  type: object
+                  properties:
+                    runId:
+                      type: string
+                    submittedAt:
+                      type: string
+                      format: date-time
+                    completedAt:
+                      type: string
+                      format: date-time
+                    durationMillis:
+                      type: integer
+                      format: int64
+                    status:
+                      type: string
+                    error:
+                      type: string
+                history:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      runId:
+                        type: string
+                      submittedAt:
+                        type: string
+                        format: date-time
+                      completedAt:
+                        type: string
+                        format: date-time
+                      durationMillis:
+                        type: integer
+                        format: int64
+                      status:
+                        type: string
+                      error:
+                        type: string
+                conditions:
+                  type: array
+                  items:
+                    x-kubernetes-preserve-unknown-fields: true

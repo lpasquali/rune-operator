@@ -1,0 +1,14 @@
+apiVersion: bench.rune.ai/v1alpha1
+kind: RuneBenchmark
+metadata:
+  name: sample-rune-benchmark
+  namespace: default
+spec:
+  apiBaseUrl: "http://rune-api.default.svc.cluster.local:8080"
+  workflow: run-benchmark
+  question: "Why is the cluster degraded?"
+  model: "llama3.1:8b"
+  schedule: "*/15 * * * *"
+  timeoutSeconds: 180
+  backoffSeconds: 60
+  suspend: false
