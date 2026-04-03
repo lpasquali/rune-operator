@@ -12,8 +12,10 @@ import (
 
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -539,6 +541,59 @@ func TestExecuteBenchmarkJobIDNotString(t *testing.T) {
 	}
 	if rec.Status != "succeeded" || rec.RunID != "" {
 		t.Fatalf("expected succeeded with empty run id, got %+v", rec)
+	}
+}
+
+func TestReadTokenCrossNamespaceRef(t *testing.T) {
+	r, _ := buildReconciler(t)
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns"},
+		Spec:       benchv1alpha1.RuneBenchmarkSpec{APITokenSecretRef: "other-ns/sec"},
+	}
+	_, err := r.readToken(context.Background(), obj)
+	if err == nil || !strings.Contains(err.Error(), "namespace must match") {
+		t.Fatalf("expected namespace mismatch error, got %v", err)
+	}
+}
+
+func TestReconcileNotFoundWithSyncError(t *testing.T) {
+	r, _ := buildReconciler(t)
+	notFoundErr := apierrors.NewNotFound(schema.GroupResource{Group: "bench.rune.ai", Resource: "runebenchmarks"}, "missing")
+	r.Client = failingListClient{
+		Client: failingGetClient{Client: r.Client, err: notFoundErr},
+		err:    context.DeadlineExceeded,
+	}
+
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "missing"}})
+	if err != nil {
+		t.Fatalf("expected nil error for not found with sync error, got %v", err)
+	}
+	if res.Requeue || res.RequeueAfter != 0 {
+		t.Fatalf("unexpected requeue result: %+v", res)
+	}
+}
+
+func TestExecuteBenchmarkBodyReadError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, _ := hj.Hijack()
+		// Send headers claiming 100 bytes but close immediately — io.ReadAll will get unexpected EOF.
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	defer ts.Close()
+
+	r, _ := buildReconciler(t)
+	obj := &benchv1alpha1.RuneBenchmark{Spec: benchv1alpha1.RuneBenchmarkSpec{APIBaseURL: ts.URL, Workflow: "wf"}}
+
+	_, err := r.executeBenchmark(context.Background(), obj, 2*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "failed to read RUNE API response body") {
+		t.Fatalf("expected body read error, got %v", err)
 	}
 }
 
