@@ -1,0 +1,279 @@
+name: Quality Gates (Rune Operator)
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-go:
+    name: RuneGate/Coverage/Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          go test ./... -coverprofile=coverage.out -covermode=atomic
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          summary = Path("coverage-summary.txt").read_text(encoding="utf-8")
+          match = re.search(r"total:\s+\(statements\)\s+([0-9.]+)%", summary)
+          if not match:
+            raise SystemExit("could not parse total coverage")
+          total = float(match.group(1))
+          threshold = 99.5
+          print(f"total coverage: {total:.1f}% (threshold: {threshold:.1f}%)")
+          if total < threshold:
+            raise SystemExit(1)
+          PY
+
+  feature-go:
+    name: RuneGate/Feature/Go
+    needs: [coverage-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: go test ./... -v
+
+  linting-go:
+    name: RuneGate/Linting/Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+
+  smoke-operator-container:
+    name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
+    needs: [feature-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Build multi-arch (amd64 + arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: rune-operator:rune-ci
+      - name: Load amd64 image and smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: rune-operator:rune-ci
+      - run: docker run --rm rune-operator:rune-ci --help >/dev/null
+
+  security-sbom:
+    name: RuneGate/Security/SBOM-and-CVE-Policy
+    needs: [feature-go, linting-go]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - run: docker build -t rune-operator:rune-ci -f Dockerfile .
+      - name: Generate SBOM — CycloneDX via Syft
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${PWD}:/work" anchore/syft:v1.17.0 rune-operator:rune-ci -o cyclonedx-json=/work/sbom/operator-image.cdx.json
+      - name: Scan SBOM — Grype
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json > sbom/operator-grype.json || true
+      - name: Scan SBOM — Trivy
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/operator-image.cdx.json --format json --output /work/sbom/operator-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL || true
+      - name: Enforce CVE policy
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          threshold = 8.8
+          findings = []
+          for f in sorted(Path('sbom').glob('*.json')):
+              if not f.exists():
+                  continue
+              data = json.loads(f.read_text(encoding='utf-8'))
+              if 'matches' in data:
+                  for m in data.get('matches', []):
+                      vuln = m.get('vulnerability', {})
+                      score = 0.0
+                      for c in vuln.get('cvss', []) or []:
+                          score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
+                      if score > 0:  # Only report vulnerabilities with scores
+                          findings.append((vuln.get('id', 'UNKNOWN'), score))
+              elif 'Results' in data:
+                  for r in data.get('Results', []) or []:
+                      for v in r.get('Vulnerabilities', []) or []:
+                          score = 0.0
+                          for vendor in ('nvd', 'redhat', 'ghsa'):
+                              score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
+                          if score > 0:  # Only report vulnerabilities with scores
+                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score))
+
+          blocked = [finding for finding in findings if finding[1] > threshold]
+          if blocked:
+              print(f"CVE policy violation: {len(blocked)} high-risk vulnerabilities found (threshold: {threshold})")
+              for cve, score in blocked[:5]:
+                  print(f"  - {cve}: {score}")
+              raise SystemExit(1)
+          else:
+              print(f"✓ CVE policy passed: {len(findings)} vulnerabilities total, {len(blocked)} above threshold")
+          PY
+      - name: Attest SBOM provenance — SLSA L3
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: sbom/operator-image.cdx.json
+
+  security-sast:
+    name: RuneGate/Security/SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Run GoSec security scanner
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
+          set +e
+          gosec -fmt json -out gosec-results.json -severity high ./...
+          GOSEC_EXIT=$?
+          set -e
+          if [ $GOSEC_EXIT -ne 0 ] && [ $GOSEC_EXIT -ne 1 ]; then
+            echo "GoSec failed with unexpected exit code: $GOSEC_EXIT"
+            exit $GOSEC_EXIT
+          fi
+          # Report results if any were found and fail on high-severity issues
+          if [ -f gosec-results.json ]; then
+            ISSUES=$(jq '.Issues | length' gosec-results.json)
+            if [ "$ISSUES" -gt 0 ]; then
+              echo "⚠ GoSec found $ISSUES security issues:"
+              jq '.Issues[] | "  - \(.rule_id): \(.details) (severity: \(.severity))"' -r gosec-results.json
+              echo "❌ Failing job because GoSec reported high-severity issues."
+              exit 1
+            fi
+          fi
+
+  security-licenses:
+    name: RuneGate/Security/LicenseCompliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: |
+          go install github.com/google/go-licenses@v1.6.0
+          go-licenses report ./... > licenses-go.txt
+
+  publish-image-and-notify-charts:
+    name: RuneGate/CD/Publish-Image-and-Notify-Charts
+    if: github.event_name == 'push'
+    needs: [smoke-operator-container, security-sbom, security-sast, security-licenses]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive image tag
+        id: meta
+        run: |
+          REF_SLUG="${GITHUB_REF_NAME//\//-}"
+          IMAGE_TAG="${REF_SLUG}-${GITHUB_SHA::7}"
+          echo "image_name=ghcr.io/lpasquali/rune-operator" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+      - name: Build and push operator image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.image_name }}:${{ steps.meta.outputs.image_tag }}
+      - name: Notify rune-charts to sync image tag
+        env:
+          CROSS_REPO_TOKEN: ${{ secrets.RUNE_CHARTS_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CROSS_REPO_TOKEN:-}" ]; then
+            echo "RUNE_CHARTS_BOT_TOKEN is not set. Skipping cross-repo notification."
+            exit 0
+          fi
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${CROSS_REPO_TOKEN}" \
+            https://api.github.com/repos/lpasquali/rune-charts/dispatches \
+            -d @- <<JSON
+          {
+            "event_type": "image-published",
+            "client_payload": {
+              "source_repo": "${GITHUB_REPOSITORY}",
+              "image_name": "${{ steps.meta.outputs.image_name }}",
+              "image_tag": "${{ steps.meta.outputs.image_tag }}"
+            }
+          }
+          JSON
+
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs: [coverage-go, feature-go, linting-go, smoke-operator-container, security-sbom, security-sast, security-licenses, publish-image-and-notify-charts]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
+            test "$result" = success
+          done
+          publish_result="${{ needs.publish-image-and-notify-charts.result }}"
+          if [ "$publish_result" != "success" ] && [ "$publish_result" != "skipped" ]; then
+            echo "publish-image-and-notify-charts failed with result: $publish_result"
+            exit 1
+          fi
