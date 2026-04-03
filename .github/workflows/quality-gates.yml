@@ -203,12 +203,13 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
       - run: |
-          go install github.com/google/go-licenses@latest
+          go install github.com/google/go-licenses@v1.6.0
           go-licenses report ./... > licenses-go.txt
 
   publish-image-and-notify-charts:
     name: RuneGate/CD/Publish-Image-and-Notify-Charts
     needs: [smoke-operator-container, security-sbom, security-sast, security-licenses]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -268,6 +269,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}" "${{ needs.publish-image-and-notify-charts.result }}"; do
+          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
             test "$result" = success
           done
+          publish_result="${{ needs.publish-image-and-notify-charts.result }}"
+          if [ "$publish_result" != "success" ] && [ "$publish_result" != "skipped" ]; then
+            echo "publish-image-and-notify-charts failed with result: $publish_result"
+            exit 1
+          fi

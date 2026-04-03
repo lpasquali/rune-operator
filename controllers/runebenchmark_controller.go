@@ -46,7 +46,7 @@ var jsonMarshal = json.Marshal
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 
 func (r *RuneBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -76,7 +76,9 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		if apierrors.IsNotFound(err) {
 			metrics.ReconcileTotal.WithLabelValues("not_found").Inc()
-			_ = r.syncActiveSchedules(ctx)
+			if syncErr := r.syncActiveSchedules(ctx); syncErr != nil {
+				logger.Error(syncErr, "failed to refresh active schedule metric")
+			}
 			return ctrl.Result{}, nil
 		}
 		metrics.ReconcileTotal.WithLabelValues("get_error").Inc()
@@ -202,7 +204,10 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return record, fmt.Errorf("failed to read RUNE API response body: %w", err)
+	}
 	if resp.StatusCode >= 300 {
 		return record, fmt.Errorf("rune api returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
@@ -242,8 +247,11 @@ func (r *RuneBenchmarkReconciler) readToken(ctx context.Context, obj *benchv1alp
 	if len(parts) != 2 {
 		return "", fmt.Errorf("apiTokenSecretRef must be namespace/name")
 	}
+	if parts[0] != obj.Namespace {
+		return "", fmt.Errorf("apiTokenSecretRef namespace must match resource namespace")
+	}
 	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: parts[0], Name: parts[1]}, sec); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Namespace: obj.Namespace, Name: parts[1]}, sec); err != nil {
 		return "", err
 	}
 	if v, ok := sec.Data["token"]; ok {

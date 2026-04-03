@@ -174,7 +174,7 @@ func TestRun_ErrorBranchesAndSuccess(t *testing.T) {
 	newManagerFn = func(*runtime.Scheme, string, string, bool) (managerLike, error) {
 		return nil, errors.New("new-manager")
 	}
-	if err := run(":1", ":2", true); err == nil || !strings.Contains(err.Error(), "unable to start manager") {
+	if err := run(":1", ":2", true); err == nil || !strings.Contains(err.Error(), "unable to create manager") {
 		t.Fatalf("expected start-manager error, got %v", err)
 	}
 

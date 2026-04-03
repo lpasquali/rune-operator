@@ -98,7 +98,7 @@ func run(metricsAddr, probeAddr string, enableLeaderElection bool) error {
 
 	mgr, err := newManagerFn(s, metricsAddr, probeAddr, enableLeaderElection)
 	if err != nil {
-		return fmt.Errorf("unable to start manager: %w", err)
+		return fmt.Errorf("unable to create manager: %w", err)
 	}
 
 	metrics.Register()

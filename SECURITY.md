@@ -15,7 +15,7 @@ Currently, only the main branch (`master` or `main`) and the latest tagged relea
 
 If you discover a security vulnerability within `rune`, please do **not** open a public issue.
 
-Instead, please send an e-mail to **[luca@bucaniere.us]**.
+Instead, please send an e-mail to **<luca@bucaniere.us>**.
 
 All security vulnerabilities will be promptly addressed. We will try to get back to you within 48 hours to acknowledge the report and briefly detail how and when we plan to address it.
 

@@ -11,7 +11,7 @@ rules:
     verbs: ["get", "update", "patch"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch", "update"]

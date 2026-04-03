@@ -429,12 +429,15 @@ func TestExecuteBenchmarkAndReadTokenBranches(t *testing.T) {
 	}
 	r, _ := buildReconciler(t, secret)
 
-	obj := &benchv1alpha1.RuneBenchmark{Spec: benchv1alpha1.RuneBenchmarkSpec{
-		APIBaseURL:        server.URL,
-		Workflow:          "wf",
-		Tenant:            "tenant-a",
-		APITokenSecretRef: "ns/sec",
-	}}
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:        server.URL,
+			Workflow:          "wf",
+			Tenant:            "tenant-a",
+			APITokenSecretRef: "ns/sec",
+		},
+	}
 
 	rec, err := r.executeBenchmark(context.Background(), obj, 5*time.Second)
 	if err != nil {
