@@ -208,6 +208,7 @@ jobs:
 
   publish-image-and-notify-charts:
     name: RuneGate/CD/Publish-Image-and-Notify-Charts
+    if: github.event_name == 'push'
     needs: [smoke-operator-container, security-sbom, security-sast, security-licenses]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
