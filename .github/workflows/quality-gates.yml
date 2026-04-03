@@ -192,6 +192,18 @@ jobs:
             fi
           fi
 
+  security-secrets:
+    name: RuneGate/Security/SecretScanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
     runs-on: ubuntu-latest
@@ -265,11 +277,11 @@ jobs:
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [coverage-go, feature-go, linting-go, smoke-operator-container, security-sbom, security-sast, security-licenses, publish-image-and-notify-charts]
+    needs: [coverage-go, feature-go, linting-go, smoke-operator-container, security-sbom, security-sast, security-secrets, security-licenses, publish-image-and-notify-charts]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-licenses.result }}"; do
+          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-secrets.result }}" "${{ needs.security-licenses.result }}"; do
             test "$result" = success
           done
           publish_result="${{ needs.publish-image-and-notify-charts.result }}"
