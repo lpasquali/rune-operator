@@ -228,8 +228,8 @@ func (c estopGetErrorClient) Get(_ context.Context, _ types.NamespacedName, obj 
 
 type estopListErrorClient struct {
 	client.Client
-	benchErr error
-	podErr   error
+	benchErr  error
+	podErr    error
 	callCount int
 }
 
@@ -443,7 +443,7 @@ func TestEStop_DefaultConfigMapNameConstant(t *testing.T) {
 // annotatePodsForScrub for direct unit-test injection.
 type noopLogger struct{}
 
-func (noopLogger) Info(_ string, _ ...any)         {}
+func (noopLogger) Info(_ string, _ ...any)           {}
 func (noopLogger) Error(_ error, _ string, _ ...any) {}
 
 // TestSuspendAllBenchmarks_Direct tests suspendAllBenchmarks in isolation.

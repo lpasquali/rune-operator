@@ -47,7 +47,7 @@ var (
 			LeaderElectionID:       "rune-operator.bench.rune.ai",
 		})
 	}
-	setupEStopFn             = func(mgr managerLike, enabled bool, configMapName string) error {
+	setupEStopFn = func(mgr managerLike, enabled bool, configMapName string) error {
 		if !enabled {
 			return nil
 		}
