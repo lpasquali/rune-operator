@@ -139,17 +139,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push amd64 temp image
+      - name: Build and push amd64 temp image (same-repo)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-          load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          push: true
+          load: false
           tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
           cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64
-          cache-to: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max' || '' }}
+          cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max
+      - name: Build amd64 temp image (fork PR)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
 
   smoke-operator-container:
     name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
