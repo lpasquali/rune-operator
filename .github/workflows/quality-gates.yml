@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   coverage-go:
     name: RuneGate/Coverage/Go
+    needs: [security-secrets, security-sast]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
