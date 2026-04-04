@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 ARG GO_VERSION=1.25
-FROM golang:${GO_VERSION}-alpine AS builder
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 WORKDIR /workspace
 
 RUN apk add --no-cache git ca-certificates
