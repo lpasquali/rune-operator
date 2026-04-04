@@ -1,5 +1,7 @@
 # Assign a code owner for changes to VEX risk-acceptance documents.
 # Enforcement as a required approval depends on branch protection being configured
-# to require review from Code Owners (with required_approving_review_count = 0 so
-# non-.vex/ PRs are not gated by this rule).
+# to require at least one approving review and to require review from Code Owners.
+# With that configuration, PRs that change /.vex/ files require approval from the
+# listed code owner; PRs that do not touch /.vex/ do not require a code-owner
+# approval specifically.
 /.vex/   @lpasquali
