@@ -1,0 +1,3 @@
+# Require 1 review for any change to VEX risk-acceptance documents.
+# VEX entries are security decisions — they must not be auto-merged.
+.vex/   @lpasquali
