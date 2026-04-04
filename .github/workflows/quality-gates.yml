@@ -130,8 +130,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write      # SLSA provenance attestation (push only)
-      attestations: write  # SLSA provenance attestation (push only)
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -179,7 +177,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json > sbom/operator-grype.json || true
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json=/work/sbom/operator-grype.json || true
       - name: Scan SBOM — Trivy (PR)
         if: github.event_name == 'pull_request'
         run: |
@@ -279,7 +277,7 @@ jobs:
       - name: Scan SBOM — Grype
         run: |
           set -euo pipefail
-          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json > sbom/operator-grype.json || true
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json=/work/sbom/operator-grype.json || true
       - name: Scan SBOM — Trivy
         run: |
           set -euo pipefail
