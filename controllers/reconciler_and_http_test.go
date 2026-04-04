@@ -43,6 +43,9 @@ func (w failingStatusWriter) Update(context.Context, client.Object, ...client.Su
 func (w failingStatusWriter) Patch(context.Context, client.Object, client.Patch, ...client.SubResourcePatchOption) error {
 	return nil
 }
+func (w failingStatusWriter) Apply(context.Context, runtime.ApplyConfiguration, ...client.SubResourceApplyOption) error {
+	return nil
+}
 
 type failingStatusClient struct {
 	client.Client
