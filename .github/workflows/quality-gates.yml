@@ -14,9 +14,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ─── Path-change detection ──────────────────────────────────────────────────
+  # go=true   : any .go file, go.mod, or go.sum changed
+  # docker=true: go=true OR Dockerfile changed
+  # A Dockerfile-only change still triggers smoke + SBOM without running Go tests.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.diff.outputs.go }}
+      docker: ${{ steps.diff.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Compute changed paths
+        id: diff
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo ".")
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              CHANGED="."
+            else
+              CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" 2>/dev/null || echo ".")
+            fi
+          fi
+          printf '%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(go\.(mod|sum)|.*\.go)$'; then
+            echo "go=true"     >> "$GITHUB_OUTPUT"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+          elif printf '%s\n' "$CHANGED" | grep -qE '^Dockerfile$'; then
+            echo "go=false"    >> "$GITHUB_OUTPUT"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false"    >> "$GITHUB_OUTPUT"
+            echo "docker=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Go gates ────────────────────────────────────────────────────────────────
+
   coverage-go:
     name: RuneGate/Coverage/Go
-    needs: [security-secrets, security-sast]
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -45,7 +90,8 @@ jobs:
 
   feature-go:
     name: RuneGate/Feature/Go
-    needs: [coverage-go]
+    needs: [changes, coverage-go]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -58,6 +104,8 @@ jobs:
 
   linting-go:
     name: RuneGate/Linting/Go
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -70,9 +118,14 @@ jobs:
           test -z "$(gofmt -l .)"
           go vet ./...
 
+  # ─── Docker / container gates ────────────────────────────────────────────────
+  # Decoupled from the Go test chain so a Dockerfile-only change still runs
+  # the smoke and SBOM jobs without requiring Go tests first.
+
   smoke-operator-container:
     name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
-    needs: [feature-go]
+    needs: [changes]
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -105,7 +158,8 @@ jobs:
 
   security-sbom:
     name: RuneGate/Security/SBOM-and-CVE-Policy
-    needs: [feature-go, linting-go]
+    needs: [changes]
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -197,6 +251,8 @@ jobs:
 
   security-sast:
     name: RuneGate/Security/SAST
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -216,7 +272,6 @@ jobs:
             echo "GoSec failed with unexpected exit code: $GOSEC_EXIT"
             exit $GOSEC_EXIT
           fi
-          # Report results if any were found and fail on high-severity issues
           if [ -f gosec-results.json ]; then
             ISSUES=$(jq '.Issues | length' gosec-results.json)
             if [ "$ISSUES" -gt 0 ]; then
@@ -241,6 +296,8 @@ jobs:
 
   security-licenses:
     name: RuneGate/Security/LicenseCompliance
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -253,10 +310,17 @@ jobs:
           go install github.com/google/go-licenses@v1.6.0
           go-licenses report ./... > licenses-go.txt
 
+  # ─── CD gate (push to main/develop only) ─────────────────────────────────────
+
   publish-image-and-notify-charts:
     name: RuneGate/CD/Publish-Image-and-Notify-Charts
-    if: github.event_name == 'push'
-    needs: [smoke-operator-container, security-sbom, security-sast, security-licenses]
+    if: github.event_name == 'push' && needs.changes.outputs.docker == 'true'
+    needs:
+      - changes
+      - smoke-operator-container
+      - security-sbom
+      - security-sast
+      - security-licenses
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -311,18 +375,40 @@ jobs:
           }
           JSON
 
+  # ─── Merge gate ──────────────────────────────────────────────────────────────
+
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [coverage-go, feature-go, linting-go, smoke-operator-container, security-sbom, security-sast, security-secrets, security-licenses, publish-image-and-notify-charts]
+    needs:
+      - changes
+      - coverage-go
+      - feature-go
+      - linting-go
+      - smoke-operator-container
+      - security-sbom
+      - security-sast
+      - security-secrets
+      - security-licenses
+      - publish-image-and-notify-charts
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          for result in "${{ needs.coverage-go.result }}" "${{ needs.feature-go.result }}" "${{ needs.linting-go.result }}" "${{ needs.smoke-operator-container.result }}" "${{ needs.security-sbom.result }}" "${{ needs.security-sast.result }}" "${{ needs.security-secrets.result }}" "${{ needs.security-licenses.result }}"; do
-            test "$result" = success
+      - name: Verify all gates passed or were skipped
+        run: |
+          rc=0
+          for result in \
+            "${{ needs.coverage-go.result }}" \
+            "${{ needs.feature-go.result }}" \
+            "${{ needs.linting-go.result }}" \
+            "${{ needs.smoke-operator-container.result }}" \
+            "${{ needs.security-sbom.result }}" \
+            "${{ needs.security-sast.result }}" \
+            "${{ needs.security-secrets.result }}" \
+            "${{ needs.security-licenses.result }}" \
+            "${{ needs.publish-image-and-notify-charts.result }}"; do
+            echo "result: $result"
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              rc=1
+            fi
           done
-          publish_result="${{ needs.publish-image-and-notify-charts.result }}"
-          if [ "$publish_result" != "success" ] && [ "$publish_result" != "skipped" ]; then
-            echo "publish-image-and-notify-charts failed with result: $publish_result"
-            exit 1
-          fi
+          exit $rc

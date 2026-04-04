@@ -5,9 +5,13 @@ metadata:
   namespace: default
 spec:
   apiBaseUrl: "http://rune-api.default.svc.cluster.local:8080"
-  workflow: run-benchmark
+  workflow: agentic-agent
   question: "Why is the cluster degraded?"
   model: "llama3.1:8b"
+  ollamaUrl: "http://ollama.default.svc.cluster.local:11434"
+  ollamaWarmup: true
+  ollamaWarmupTimeoutSeconds: 120
+  kubeconfig: ""
   schedule: "*/15 * * * *"
   timeoutSeconds: 180
   backoffSeconds: 60
