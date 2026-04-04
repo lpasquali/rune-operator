@@ -1,3 +1,5 @@
-# Require 1 review for any change to VEX risk-acceptance documents.
-# VEX entries are security decisions — they must not be auto-merged.
-.vex/   @lpasquali
+# Assign a code owner for changes to VEX risk-acceptance documents.
+# Enforcement as a required approval depends on branch protection being configured
+# to require review from Code Owners (with required_approving_review_count = 0 so
+# non-.vex/ PRs are not gated by this rule).
+/.vex/   @lpasquali
