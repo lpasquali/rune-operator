@@ -341,7 +341,9 @@ jobs:
               'gnu affero general public license',
           )
           # Temporary exceptions — keep minimal and document the constraint.
-          allowed_package_exceptions: set[str] = set()
+          # All entries MUST be lowercase; comparison uses pkg.lower().
+          _raw_exceptions: set[str] = set()
+          allowed_package_exceptions = {e.lower() for e in _raw_exceptions}
 
           # go-licenses report emits CSV: package,license_url,license_type
           text = Path('licenses-go.txt').read_text(encoding='utf-8')
