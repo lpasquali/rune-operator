@@ -332,7 +332,7 @@ jobs:
 
   publish-image-and-notify-charts:
     name: RuneGate/CD/Publish-Image-and-Notify-Charts
-    if: github.event_name == 'push' && needs.changes.outputs.docker == 'true'
+    if: github.event_name == 'push' && needs.changes.outputs.docker == 'true' && needs.merge-gate.result == 'success'
     needs:
       - changes
       - merge-gate
