@@ -311,6 +311,7 @@ jobs:
           go install github.com/google/go-licenses@v1.6.0
           go-licenses report ./... > licenses-go.txt
           python3 - <<'PY'
+          import csv
           from pathlib import Path
 
           # Tokens that identify disallowed licenses (case-insensitive).
@@ -324,14 +325,16 @@ jobs:
           # Temporary exceptions — keep minimal and document the constraint.
           allowed_package_exceptions: set[str] = set()
 
-          rows = Path('licenses-go.txt').read_text(encoding='utf-8').splitlines()
+          # go-licenses report emits CSV: package,license_url,license_type
+          text = Path('licenses-go.txt').read_text(encoding='utf-8')
+          reader = csv.reader(text.splitlines())
+          rows = list(reader)
           blocked = []
           allowed_hits = []
-          for row in rows:
-              parts = row.split(',')
+          for parts in rows:
               if len(parts) < 3:
                   continue
-              pkg, _, license_name = parts[0].strip(), parts[1].strip(), parts[2].strip()
+              pkg, license_name = parts[0].strip(), parts[2].strip()
               lic_lower = license_name.lower()
               if any(token in lic_lower for token in disallowed_tokens):
                   entry = (pkg, license_name)
