@@ -1,21 +1,3 @@
-# Release rune-operator on version tags.
-#
-# Trigger: push of a tag matching v* (e.g. v0.2.0, v1.0.0-rc1)
-#
-# ─── TAGGING PROCESS ────────────────────────────────────────────────────────
-#  Tags MUST only be pushed AFTER the PR has been merged to main and all
-#  quality gates (RuneGate Grouped) have passed.
-#
-#  Correct flow:
-#    1. Open PR → quality gates pass → merge to main
-#    2. git pull origin main
-#    3. git tag v<version>
-#    4. git push origin v<version>
-#
-#  NEVER push a tag on an unmerged branch or before quality gates pass.
-#  The guard step below will reject tags not reachable from origin/main.
-# ────────────────────────────────────────────────────────────────────────────
-
 name: Release
 
 on:
