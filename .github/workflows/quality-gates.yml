@@ -149,6 +149,7 @@ jobs:
           push: true
           load: false
           tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
+          build-args: BUILDPLATFORM=linux/amd64
           cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64
           cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max
       - name: Build amd64 image (PR - verify only, no push)
@@ -161,6 +162,7 @@ jobs:
           push: false
           load: true
           tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
+          build-args: BUILDPLATFORM=linux/amd64
 
   smoke-operator-container:
     name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
