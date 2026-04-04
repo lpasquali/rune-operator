@@ -89,7 +89,7 @@ func TestEStop_EmptyData(t *testing.T) {
 }
 
 // TestEStop_Triggered verifies the happy path: all RuneBenchmarks are suspended
-// and annotated, and all pods receive the RAM-scrub annotation.
+// and annotated, and pods in the same namespace receive the RAM-scrub annotation.
 func TestEStop_Triggered(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: DefaultEStopConfigMapName},
@@ -103,11 +103,16 @@ func TestEStop_Triggered(t *testing.T) {
 			Suspend:    false,
 		},
 	}
+	// Pod in the SAME namespace as the benchmark — should be annotated.
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "pod-1"},
 	}
+	// Pod in a DIFFERENT namespace — should NOT be annotated.
+	podOther := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "other-ns", Name: "pod-other"},
+	}
 
-	r := buildEStopReconciler(t, cm, bench, pod)
+	r := buildEStopReconciler(t, cm, bench, pod, podOther)
 	_, err := r.Reconcile(context.Background(), estopRequest("default", DefaultEStopConfigMapName))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -125,13 +130,22 @@ func TestEStop_Triggered(t *testing.T) {
 		t.Errorf("expected annotation %q on benchmark, got %q", RamScrubAnnotation, updated.Annotations[RamScrubAnnotation])
 	}
 
-	// Verify pod annotation.
+	// Pod in benchmark namespace — should be annotated.
 	updatedPod := &corev1.Pod{}
 	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "pod-1"}, updatedPod); err != nil {
 		t.Fatalf("get pod: %v", err)
 	}
 	if updatedPod.Annotations[RamScrubAnnotation] != "true" {
-		t.Errorf("expected annotation %q on pod", RamScrubAnnotation)
+		t.Errorf("expected annotation %q on pod in benchmark namespace", RamScrubAnnotation)
+	}
+
+	// Pod in other namespace — should NOT be annotated.
+	otherPod := &corev1.Pod{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "other-ns", Name: "pod-other"}, otherPod); err != nil {
+		t.Fatalf("get other pod: %v", err)
+	}
+	if otherPod.Annotations[RamScrubAnnotation] == "true" {
+		t.Error("expected pod in other namespace NOT to be annotated")
 	}
 }
 
@@ -158,11 +172,18 @@ func TestEStop_AlreadySuspendedBenchmark(t *testing.T) {
 }
 
 // TestEStop_AlreadyAnnotatedPod ensures that pods already carrying the
-// RAM-scrub annotation are not re-annotated.
+// RAM-scrub annotation are not re-patched.
 func TestEStop_AlreadyAnnotatedPod(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: DefaultEStopConfigMapName},
 		Data:       map[string]string{"triggered": "true"},
+	}
+	bench := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "bench-x"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: "http://rune:8080",
+			Workflow:   "benchmark",
+		},
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -171,10 +192,42 @@ func TestEStop_AlreadyAnnotatedPod(t *testing.T) {
 			Annotations: map[string]string{RamScrubAnnotation: "true"},
 		},
 	}
-	r := buildEStopReconciler(t, cm, pod)
+	r := buildEStopReconciler(t, cm, bench, pod)
 	_, err := r.Reconcile(context.Background(), estopRequest("default", DefaultEStopConfigMapName))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestEStop_NamespaceFilter verifies that when EStopNamespace is set,
+// ConfigMaps from other namespaces are ignored.
+func TestEStop_NamespaceFilter(t *testing.T) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "wrong-ns", Name: DefaultEStopConfigMapName},
+		Data:       map[string]string{"triggered": "true"},
+	}
+	bench := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "bench-ns"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: "http://rune:8080",
+			Workflow:   "benchmark",
+		},
+	}
+	r := buildEStopReconciler(t, cm, bench)
+	r.EStopNamespace = "ops" // Only accept ConfigMaps from "ops" namespace.
+
+	_, err := r.Reconcile(context.Background(), estopRequest("wrong-ns", DefaultEStopConfigMapName))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Benchmark should NOT be suspended (wrong namespace filtered).
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "bench-ns"}, updated); err != nil {
+		t.Fatalf("get benchmark: %v", err)
+	}
+	if updated.Spec.Suspend {
+		t.Error("benchmark should not be suspended when namespace filter rejects the trigger")
 	}
 }
 
@@ -237,7 +290,7 @@ func (c *estopListErrorClient) Get(ctx context.Context, key types.NamespacedName
 	return c.Client.Get(ctx, key, obj, opts...)
 }
 
-func (c *estopListErrorClient) List(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+func (c *estopListErrorClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 	c.callCount++
 	if _, ok := list.(*benchv1alpha1.RuneBenchmarkList); ok && c.benchErr != nil {
 		return c.benchErr
@@ -245,7 +298,7 @@ func (c *estopListErrorClient) List(_ context.Context, list client.ObjectList, _
 	if _, ok := list.(*corev1.PodList); ok && c.podErr != nil {
 		return c.podErr
 	}
-	return nil
+	return c.Client.List(ctx, list, opts...)
 }
 
 type estopUpdateErrorClient struct {
@@ -317,15 +370,23 @@ func TestEStop_ListBenchmarksError(t *testing.T) {
 }
 
 // TestEStop_ListPodsError verifies that a List error for Pods is propagated.
+// The benchmark must be in the same namespace as the list error triggers.
 func TestEStop_ListPodsError(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: DefaultEStopConfigMapName},
 		Data:       map[string]string{"triggered": "true"},
 	}
+	bench := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "bench-pod-err"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: "http://rune:8080",
+			Workflow:   "benchmark",
+		},
+	}
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
 	_ = benchv1alpha1.AddToScheme(s)
-	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm).Build()
+	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, bench).Build()
 	listClient := &estopListErrorClient{Client: base, podErr: errors.New("list-pod-err")}
 	r := &EStopReconciler{Client: listClient, Scheme: s}
 
@@ -364,12 +425,19 @@ func TestEStop_UpdateBenchmarkError(t *testing.T) {
 	}
 }
 
-// TestEStop_UpdatePodErrorContinues verifies that a pod Update error is logged
+// TestEStop_PatchPodErrorContinues verifies that a pod Patch error is logged
 // but does not abort the reconcile loop.
-func TestEStop_UpdatePodErrorContinues(t *testing.T) {
+func TestEStop_PatchPodErrorContinues(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: DefaultEStopConfigMapName},
 		Data:       map[string]string{"triggered": "true"},
+	}
+	bench := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "bench-patch-err"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: "http://rune:8080",
+			Workflow:   "benchmark",
+		},
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "pod-fail"},
@@ -377,50 +445,88 @@ func TestEStop_UpdatePodErrorContinues(t *testing.T) {
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
 	_ = benchv1alpha1.AddToScheme(s)
-	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, pod).Build()
+	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, bench, pod).Build()
 
-	// Wrap update to fail for pods but succeed for RuneBenchmarks.
 	r := &EStopReconciler{
-		Client: podUpdateErrorClient{Client: base, podUpdateErr: errors.New("pod-update-err")},
+		Client: podPatchErrorClient{Client: base, podPatchErr: errors.New("pod-patch-err")},
 		Scheme: s,
 	}
 	_, err := r.Reconcile(context.Background(), estopRequest("default", DefaultEStopConfigMapName))
-	// Pod update failure is logged, not returned.
+	// Pod patch failure is logged, not returned.
 	if err != nil {
-		t.Fatalf("expected nil error (pod update errors are non-fatal), got %v", err)
+		t.Fatalf("expected nil error (pod patch errors are non-fatal), got %v", err)
 	}
 }
 
-// podUpdateErrorClient returns an error only when updating Pod objects.
-type podUpdateErrorClient struct {
+// podPatchErrorClient returns an error only when patching Pod objects.
+type podPatchErrorClient struct {
 	client.Client
-	podUpdateErr error
+	podPatchErr error
 }
 
-func (c podUpdateErrorClient) Update(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+func (c podPatchErrorClient) Patch(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
 	if _, ok := obj.(*corev1.Pod); ok {
-		return c.podUpdateErr
+		return c.podPatchErr
 	}
-	return c.Client.Update(context.Background(), obj)
+	return c.Client.Patch(context.Background(), obj, nil)
 }
 
-// TestEStop_SetupWithManager exercises the SetupWithManager path via a stub
-// that implements the minimal ctrl.Manager interface.
-func TestEStop_SetupWithManager(t *testing.T) {
+func (c podPatchErrorClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	return c.Client.Update(ctx, obj, opts...)
+}
+
+func (c podPatchErrorClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	return c.Client.List(ctx, list, opts...)
+}
+
+func (c podPatchErrorClient) Get(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+// TestEStop_SetupWithManager_NilGuard tests the nil manager guard.
+func TestEStop_SetupWithManager_NilGuard(t *testing.T) {
+	s := runtime.NewScheme()
+	_ = corev1.AddToScheme(s)
+	base := fake.NewClientBuilder().WithScheme(s).Build()
+	r := &EStopReconciler{Client: base, Scheme: s}
+
+	err := r.SetupWithManager(nil)
+	if err == nil || err.Error() != "manager is nil" {
+		t.Fatalf("expected 'manager is nil' error, got %v", err)
+	}
+}
+
+// TestEStop_SetupWithManager_Injectable exercises the SetupWithManager path
+// via the injectable setupEStopControllerWithManager function.
+func TestEStop_SetupWithManager_Injectable(t *testing.T) {
+	oldSetup := setupEStopControllerWithManager
+	t.Cleanup(func() { setupEStopControllerWithManager = oldSetup })
+
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
 	_ = benchv1alpha1.AddToScheme(s)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
-	r := &EStopReconciler{Client: base, Scheme: s}
+	r := &EStopReconciler{Client: base, Scheme: s, EStopConfigMapName: "custom-estop"}
 
-	oldSetup := setupControllerWithManager
-	t.Cleanup(func() { setupControllerWithManager = oldSetup })
+	called := false
+	var gotName string
+	setupEStopControllerWithManager = func(_ ctrl.Manager, _ *EStopReconciler, name string) error {
+		called = true
+		gotName = name
+		return nil
+	}
 
-	// Verify SetupWithManager calls through to ctrl.NewControllerManagedBy
-	// by checking that an error is returned when the manager is nil.
-	err := r.SetupWithManager(nil)
-	// nil manager will panic in the real code; we just ensure it doesn't hang.
-	_ = err // might or might not error depending on runtime; result is less important
+	// stubManager embeds ctrl.Manager to satisfy the interface check in SetupWithManager.
+	type stubManager struct{ ctrl.Manager }
+	if err := r.SetupWithManager(stubManager{}); err != nil {
+		t.Fatalf("SetupWithManager returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected setupEStopControllerWithManager to be called")
+	}
+	if gotName != "custom-estop" {
+		t.Fatalf("expected custom-estop, got %q", gotName)
+	}
 }
 
 // TestEStop_RamScrubAnnotationConstant documents the stable annotation key.
@@ -439,8 +545,7 @@ func TestEStop_DefaultConfigMapNameConstant(t *testing.T) {
 	}
 }
 
-// noopLogger satisfies the inline logger interface used by suspendAllBenchmarks /
-// annotatePodsForScrub for direct unit-test injection.
+// noopLogger satisfies the inline logger interface for direct unit-test injection.
 type noopLogger struct{}
 
 func (noopLogger) Info(_ string, _ ...any)           {}
@@ -467,11 +572,19 @@ func TestSuspendAllBenchmarks_Direct(t *testing.T) {
 }
 
 // TestAnnotatePodsForScrub_Direct tests annotatePodsForScrub in isolation.
+// Pods are only annotated when a RuneBenchmark is in the same namespace.
 func TestAnnotatePodsForScrub_Direct(t *testing.T) {
+	bench := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "bench-for-scrub"},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: "http://rune:8080",
+			Workflow:   "benchmark",
+		},
+	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "direct-pod"},
 	}
-	r := buildEStopReconciler(t, pod)
+	r := buildEStopReconciler(t, bench, pod)
 	if err := r.annotatePodsForScrub(context.Background(), log.FromContext(context.Background())); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -479,5 +592,38 @@ func TestAnnotatePodsForScrub_Direct(t *testing.T) {
 	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "direct-pod"}, updated)
 	if updated.Annotations[RamScrubAnnotation] != "true" {
 		t.Error("expected pod to be annotated for RAM scrub")
+	}
+}
+
+// TestAnnotatePodsForScrub_NoBenchmarks ensures that with no benchmarks, no
+// pods are annotated (namespace loop is empty).
+func TestAnnotatePodsForScrub_NoBenchmarks(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "lonely-pod"},
+	}
+	r := buildEStopReconciler(t, pod)
+	if err := r.annotatePodsForScrub(context.Background(), noopLogger{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	updated := &corev1.Pod{}
+	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "lonely-pod"}, updated)
+	if updated.Annotations[RamScrubAnnotation] == "true" {
+		t.Error("expected pod NOT to be annotated when no benchmarks exist")
+	}
+}
+
+// TestAnnotatePodsForScrub_BenchmarkListError covers the benchmark List error
+// branch inside annotatePodsForScrub when called directly.
+func TestAnnotatePodsForScrub_BenchmarkListError(t *testing.T) {
+	s := runtime.NewScheme()
+	_ = corev1.AddToScheme(s)
+	_ = benchv1alpha1.AddToScheme(s)
+	base := fake.NewClientBuilder().WithScheme(s).Build()
+	lc := &estopListErrorClient{Client: base, benchErr: errors.New("bench-list-in-annotate")}
+	r := &EStopReconciler{Client: lc, Scheme: s}
+
+	err := r.annotatePodsForScrub(context.Background(), noopLogger{})
+	if err == nil || err.Error() != "bench-list-in-annotate" {
+		t.Fatalf("expected bench-list-in-annotate error, got %v", err)
 	}
 }

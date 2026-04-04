@@ -2,13 +2,16 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
 )
@@ -24,36 +27,59 @@ const (
 	DefaultEStopConfigMapName = "rune-estop"
 )
 
-// EStopReconciler watches a single ConfigMap for an E-Stop signal.  When the
-// ConfigMap's "triggered" key is "true" the reconciler suspends every
-// RuneBenchmark in the cluster and annotates all pods so that operators and
-// higher-level controllers know a RAM-scrub cycle is required.
+// setupEStopControllerWithManager is injectable for unit tests; production code
+// sets up a name-filtered watch on ConfigMaps.
+var setupEStopControllerWithManager = func(mgr ctrl.Manager, r *EStopReconciler, estopName string) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&corev1.ConfigMap{}, builder.WithPredicates(
+			predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				return obj.GetName() == estopName
+			}),
+		)).
+		Complete(r)
+}
+
+// EStopReconciler watches a single named ConfigMap for an E-Stop signal.  When
+// the ConfigMap's "triggered" key is "true" the reconciler:
+//  1. Suspends every RuneBenchmark in the cluster.
+//  2. Annotates pods in RuneBenchmark namespaces with RamScrubAnnotation so
+//     that external controllers can schedule a RAM-scrub cycle.
 type EStopReconciler struct {
 	client.Client
 	Scheme             *runtime.Scheme
 	EStopConfigMapName string // defaults to DefaultEStopConfigMapName when empty
+	// EStopNamespace restricts the ConfigMap watch to one namespace.
+	// Empty string means any namespace (cluster-scoped watch).
+	EStopNamespace string
 }
 
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;patch;update
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;patch
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks,verbs=get;list;update;patch
 
 func (r *EStopReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.ConfigMap{}).
-		Complete(r)
+	if mgr == nil {
+		return fmt.Errorf("manager is nil")
+	}
+	return setupEStopControllerWithManager(mgr, r, r.estopName())
+}
+
+func (r *EStopReconciler) estopName() string {
+	if r.EStopConfigMapName != "" {
+		return r.EStopConfigMapName
+	}
+	return DefaultEStopConfigMapName
 }
 
 func (r *EStopReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	estopName := r.EStopConfigMapName
-	if estopName == "" {
-		estopName = DefaultEStopConfigMapName
+	// Guard against ConfigMaps that slipped past the predicate (e.g. during
+	// re-list on startup) or wrong-namespace triggers.
+	if req.Name != r.estopName() {
+		return ctrl.Result{}, nil
 	}
-
-	// Ignore every ConfigMap that is not the designated E-Stop ConfigMap.
-	if req.Name != estopName {
+	if r.EStopNamespace != "" && req.Namespace != r.EStopNamespace {
 		return ctrl.Result{}, nil
 	}
 
@@ -109,34 +135,47 @@ func (r *EStopReconciler) suspendAllBenchmarks(ctx context.Context, logger inter
 	return nil
 }
 
+// annotatePodsForScrub annotates pods that live in the same namespaces as
+// RuneBenchmark resources.  Using Patch avoids resourceVersion conflicts
+// common with Update on frequently-mutating Pod objects.
 func (r *EStopReconciler) annotatePodsForScrub(ctx context.Context, logger interface {
 	Info(string, ...any)
 	Error(error, string, ...any)
 }) error {
-	var podList corev1.PodList
-	if err := r.List(ctx, &podList); err != nil {
+	var benchmarkList benchv1alpha1.RuneBenchmarkList
+	if err := r.List(ctx, &benchmarkList); err != nil {
 		return err
 	}
 
-	for i := range podList.Items {
-		pod := &podList.Items[i]
-		if pod.Annotations != nil && pod.Annotations[RamScrubAnnotation] == "true" {
-			continue
+	// Collect the set of namespaces that host RuneBenchmarks.
+	namespaces := make(map[string]struct{})
+	for _, item := range benchmarkList.Items {
+		namespaces[item.Namespace] = struct{}{}
+	}
+
+	for ns := range namespaces {
+		var podList corev1.PodList
+		if err := r.List(ctx, &podList, client.InNamespace(ns)); err != nil {
+			return err
 		}
-		if pod.Annotations == nil {
-			pod.Annotations = make(map[string]string)
-		}
-		pod.Annotations[RamScrubAnnotation] = "true"
-		if err := r.Update(ctx, pod); err != nil {
-			// Log but continue — a single pod failure should not block the others.
-			logger.Error(err, "failed to annotate pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
-		} else {
-			logger.Info("annotated pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
+
+		for i := range podList.Items {
+			pod := &podList.Items[i]
+			if pod.Annotations != nil && pod.Annotations[RamScrubAnnotation] == "true" {
+				continue
+			}
+			base := pod.DeepCopy()
+			if pod.Annotations == nil {
+				pod.Annotations = make(map[string]string)
+			}
+			pod.Annotations[RamScrubAnnotation] = "true"
+			if err := r.Patch(ctx, pod, client.MergeFrom(base)); err != nil {
+				// Log but continue — a single pod failure should not block others.
+				logger.Error(err, "failed to annotate pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
+			} else {
+				logger.Info("annotated pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
+			}
 		}
 	}
 	return nil
 }
-
-// clientLike is a minimal interface over client.Client used for compile-time
-// verification in tests; the full client.Client is embedded in EStopReconciler.
-type clientLike = client.Client
