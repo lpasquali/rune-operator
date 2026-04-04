@@ -322,11 +322,7 @@ jobs:
     if: github.event_name == 'push' && needs.changes.outputs.docker == 'true'
     needs:
       - changes
-      - build-image
-      - smoke-operator-container
-      - security-sbom
-      - security-sast
-      - security-licenses
+      - merge-gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -403,7 +399,6 @@ jobs:
       - security-sast
       - security-secrets
       - security-licenses
-      - publish-image-and-notify-charts
     runs-on: ubuntu-latest
     steps:
       - name: Verify all gates passed or were skipped
@@ -418,8 +413,7 @@ jobs:
             "${{ needs.security-sbom.result }}" \
             "${{ needs.security-sast.result }}" \
             "${{ needs.security-secrets.result }}" \
-            "${{ needs.security-licenses.result }}" \
-            "${{ needs.publish-image-and-notify-charts.result }}"; do
+            "${{ needs.security-licenses.result }}"; do
             echo "result: $result"
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               rc=1
