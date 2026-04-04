@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG GO_VERSION=1.25
+ARG BUILDPLATFORM
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 WORKDIR /workspace
 
