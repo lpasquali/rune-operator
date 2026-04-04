@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
           cache-dependency-path: go.sum
       - run: |
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
           cache-dependency-path: go.sum
       - run: go test ./... -v
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
           cache-dependency-path: go.sum
       - run: |
@@ -128,7 +128,8 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          threshold = 8.8
+          BLOCK_THRESHOLD = 7.0   # fixable HIGH+CRITICAL → hard block (IEC 62443 4-1 ML4 DM-4)
+          WARN_THRESHOLD  = 7.0   # unfixable HIGH+CRITICAL → VEX register required
           findings = []
           for f in sorted(Path('sbom').glob('*.json')):
               if not f.exists():
@@ -141,7 +142,8 @@ jobs:
                       for c in vuln.get('cvss', []) or []:
                           score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
                       if score > 0:  # Only report vulnerabilities with scores
-                          findings.append((vuln.get('id', 'UNKNOWN'), score))
+                          fixable = vuln.get('fix', {}).get('state', '') == 'fixed'
+                          findings.append((vuln.get('id', 'UNKNOWN'), score, 'grype', fixable))
               elif 'Results' in data:
                   for r in data.get('Results', []) or []:
                       for v in r.get('Vulnerabilities', []) or []:
@@ -149,16 +151,21 @@ jobs:
                           for vendor in ('nvd', 'redhat', 'ghsa'):
                               score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
                           if score > 0:  # Only report vulnerabilities with scores
-                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score))
+                              fixable = bool(v.get('FixedVersion', ''))
+                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, 'trivy', fixable))
 
-          blocked = [finding for finding in findings if finding[1] > threshold]
+          blocked = [x for x in findings if x[1] >= BLOCK_THRESHOLD and x[3]]
+          warned  = [x for x in findings if x[1] >= WARN_THRESHOLD and not x[3]]
           if blocked:
-              print(f"CVE policy violation: {len(blocked)} high-risk vulnerabilities found (threshold: {threshold})")
-              for cve, score in blocked[:5]:
-                  print(f"  - {cve}: {score}")
+              print(f"CVE policy violation: {len(blocked)} fixable HIGH+CRITICAL vulnerabilities found (CVSS >= {BLOCK_THRESHOLD})")
+              for cve, score, src, _ in blocked[:5]:
+                  print(f"  - {cve} [{src}]: {score}")
               raise SystemExit(1)
-          else:
-              print(f"✓ CVE policy passed: {len(findings)} vulnerabilities total, {len(blocked)} above threshold")
+          if warned:
+              print(f"CVE warning: {len(warned)} unfixable HIGH+CRITICAL vulnerabilities require VEX register entry (CVSS >= {WARN_THRESHOLD})")
+              for cve, score, src, _ in warned[:5]:
+                  print(f"  - {cve} [{src}]: {score}")
+          print(f"✓ CVE policy passed: {len(findings)} vulnerabilities total, {len(blocked)} fixable blocked, {len(warned)} unfixable warned")
           PY
       - name: Attest SBOM provenance — SLSA L3
         uses: actions/attest-build-provenance@v2
@@ -172,7 +179,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
           cache-dependency-path: go.sum
       - name: Run GoSec security scanner
@@ -216,7 +223,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
           cache-dependency-path: go.sum
       - run: |
