@@ -130,6 +130,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write      # SLSA provenance attestation (push only)
+      attestations: write  # SLSA provenance attestation (push only)
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -152,7 +154,7 @@ jobs:
           build-args: BUILDPLATFORM=linux/amd64
           cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64
           cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max
-      - name: Build amd64 image (PR - verify only, no push)
+      - name: Build amd64 image (PR — local only, no registry push)
         if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v7
         with:
@@ -161,8 +163,72 @@ jobs:
           platforms: linux/amd64
           push: false
           load: true
-          tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
+          tags: rune-operator:rune-ci
           build-args: BUILDPLATFORM=linux/amd64
+      # ── Inline smoke + SBOM for PRs (image is already in local daemon) ────────
+      - name: Smoke test (PR)
+        if: github.event_name == 'pull_request'
+        run: docker run --rm rune-operator:rune-ci --help >/dev/null
+      - name: Generate SBOM — CycloneDX via Syft (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${PWD}:/work" anchore/syft:v1.17.0 rune-operator:rune-ci -o cyclonedx-json=/work/sbom/operator-image.cdx.json
+      - name: Scan SBOM — Grype (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json > sbom/operator-grype.json || true
+      - name: Scan SBOM — Trivy (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/operator-image.cdx.json --format json --output /work/sbom/operator-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL || true
+      - name: Enforce CVE policy (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          BLOCK_THRESHOLD = 7.0
+          WARN_THRESHOLD  = 7.0
+          findings = []
+          for f in sorted(Path('sbom').glob('*.json')):
+              if not f.exists():
+                  continue
+              data = json.loads(f.read_text(encoding='utf-8'))
+              if 'matches' in data:
+                  for m in data.get('matches', []):
+                      vuln = m.get('vulnerability', {})
+                      score = 0.0
+                      for c in vuln.get('cvss', []) or []:
+                          score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
+                      if score > 0:
+                          fixable = vuln.get('fix', {}).get('state', '') == 'fixed'
+                          findings.append((vuln.get('id', 'UNKNOWN'), score, 'grype', fixable))
+              elif 'Results' in data:
+                  for r in data.get('Results', []) or []:
+                      for v in r.get('Vulnerabilities', []) or []:
+                          score = 0.0
+                          for vendor in ('nvd', 'redhat', 'ghsa'):
+                              score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
+                          if score > 0:
+                              fixable = bool(v.get('FixedVersion', ''))
+                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, 'trivy', fixable))
+          blocked = [x for x in findings if x[1] >= BLOCK_THRESHOLD and x[3]]
+          warned  = [x for x in findings if x[1] >= WARN_THRESHOLD and not x[3]]
+          if blocked:
+              print(f"CVE policy violation: {len(blocked)} fixable HIGH+CRITICAL (CVSS >= {BLOCK_THRESHOLD})")
+              for cve, score, src, _ in blocked[:5]:
+                  print(f"  - {cve} [{src}]: {score}")
+              raise SystemExit(1)
+          if warned:
+              print(f"CVE warning: {len(warned)} unfixable HIGH+CRITICAL — VEX entry required")
+              for cve, score, src, _ in warned[:5]:
+                  print(f"  - {cve} [{src}]: {score}")
+          print(f"✓ CVE policy passed: {len(findings)} total, {len(blocked)} blocked, {len(warned)} warned")
+          PY
 
   smoke-operator-container:
     name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
