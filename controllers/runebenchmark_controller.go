@@ -156,15 +156,56 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
+func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
+	switch spec.Workflow {
+	case "agentic-agent":
+		return map[string]any{
+			"question":              spec.Question,
+			"model":                 spec.Model,
+			"ollama_url":            spec.OllamaURL,
+			"ollama_warmup":         spec.OllamaWarmup,
+			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
+			"kubeconfig":            spec.Kubeconfig,
+		}
+	case "ollama-instance":
+		return map[string]any{
+			"vastai":        spec.VastAI,
+			"template_hash": spec.TemplateHash,
+			"min_dph":       spec.MinDPH,
+			"max_dph":       spec.MaxDPH,
+			"reliability":   spec.Reliability,
+			"ollama_url":    spec.OllamaURL,
+		}
+	case "benchmark":
+		return map[string]any{
+			"vastai":                spec.VastAI,
+			"template_hash":         spec.TemplateHash,
+			"min_dph":               spec.MinDPH,
+			"max_dph":               spec.MaxDPH,
+			"reliability":           spec.Reliability,
+			"ollama_url":            spec.OllamaURL,
+			"question":              spec.Question,
+			"model":                 spec.Model,
+			"ollama_warmup":         spec.OllamaWarmup,
+			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
+			"kubeconfig":            spec.Kubeconfig,
+			"vastai_stop_instance":  spec.VastAIStopInstance,
+		}
+	default:
+		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
+		return map[string]any{
+			"workflow":   spec.Workflow,
+			"question":   spec.Question,
+			"model":      spec.Model,
+			"ollama_url": spec.OllamaURL,
+		}
+	}
+}
+
 func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *benchv1alpha1.RuneBenchmark, timeout time.Duration) (benchv1alpha1.RunRecord, error) {
 	record := benchv1alpha1.RunRecord{SubmittedAt: metav1.Now(), Status: "submitted"}
 
-	payload := map[string]any{
-		"workflow":   obj.Spec.Workflow,
-		"question":   obj.Spec.Question,
-		"model":      obj.Spec.Model,
-		"ollama_url": obj.Spec.OllamaURL,
-	}
+	payload := buildPayload(obj.Spec)
 	body, err := jsonMarshal(payload)
 	if err != nil {
 		return record, fmt.Errorf("failed to marshal request payload: %w", err)
@@ -180,7 +221,7 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		}
 	}
 
-	requestURL := strings.TrimRight(obj.Spec.APIBaseURL, "/") + "/v1/jobs"
+	requestURL := strings.TrimRight(obj.Spec.APIBaseURL, "/") + "/v1/jobs/" + obj.Spec.Workflow
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return record, err

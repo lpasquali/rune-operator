@@ -17,6 +17,21 @@ type RuneBenchmarkSpec struct {
 	Suspend           bool   `json:"suspend,omitempty"`
 	TimeoutSeconds    int32  `json:"timeoutSeconds,omitempty"`
 	BackoffSeconds    int32  `json:"backoffSeconds,omitempty"`
+
+	// Ollama options (agentic-agent, benchmark)
+	OllamaWarmup               bool  `json:"ollamaWarmup,omitempty"`
+	OllamaWarmupTimeoutSeconds int32 `json:"ollamaWarmupTimeoutSeconds,omitempty"`
+
+	// Kubeconfig path forwarded to agentic-agent and benchmark jobs
+	Kubeconfig string `json:"kubeconfig,omitempty"`
+
+	// Vast.ai provisioning options (ollama-instance, benchmark)
+	VastAI             bool    `json:"vastai,omitempty"`
+	TemplateHash       string  `json:"templateHash,omitempty"`
+	MinDPH             float64 `json:"minDph,omitempty"`
+	MaxDPH             float64 `json:"maxDph,omitempty"`
+	Reliability        float64 `json:"reliability,omitempty"`
+	VastAIStopInstance bool    `json:"vastaiStopInstance,omitempty"`
 }
 
 type RunRecord struct {
