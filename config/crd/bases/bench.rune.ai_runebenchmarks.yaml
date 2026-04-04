@@ -48,9 +48,9 @@ spec:
                 workflow:
                   type: string
                   enum:
-                    - run-ollama-instance
-                    - run-agentic-agent
-                    - run-benchmark
+                    - agentic-agent
+                    - benchmark
+                    - ollama-instance
                 question:
                   type: string
                 model:
@@ -74,6 +74,38 @@ spec:
                   format: int32
                   minimum: 5
                   maximum: 3600
+                ollamaWarmup:
+                  type: boolean
+                  description: Warm up the Ollama model before running the job (agentic-agent, benchmark)
+                ollamaWarmupTimeoutSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 600
+                  description: Seconds to wait for Ollama warmup before giving up
+                kubeconfig:
+                  type: string
+                  description: Path to kubeconfig forwarded to the agentic-agent or benchmark job
+                vastai:
+                  type: boolean
+                  description: Provision an Ollama instance on Vast.ai (ollama-instance, benchmark)
+                templateHash:
+                  type: string
+                  description: Vast.ai instance template hash
+                minDph:
+                  type: number
+                  description: Minimum cost per hour (USD) for Vast.ai instance selection
+                maxDph:
+                  type: number
+                  description: Maximum cost per hour (USD) for Vast.ai instance selection
+                reliability:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                  description: Minimum Vast.ai instance reliability score (0.0–1.0)
+                vastaiStopInstance:
+                  type: boolean
+                  description: Stop the Vast.ai instance after the benchmark completes (benchmark only)
             status:
               type: object
               properties:

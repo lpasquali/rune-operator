@@ -477,7 +477,7 @@ func TestExecuteBenchmarkAndReadTokenBranches(t *testing.T) {
 
 func TestExecuteBenchmarkNonJSONBodyAndHTTPError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/jobs" {
+		if r.URL.Path == "/v1/jobs/wf" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("not-json"))
 			return
@@ -606,6 +606,132 @@ func TestExecuteBenchmarkHTTPTransportError(t *testing.T) {
 
 	if _, err := r.executeBenchmark(context.Background(), obj, 150*time.Millisecond); err == nil {
 		t.Fatalf("expected transport error")
+	}
+}
+
+func TestBuildPayloadAgenticAgent(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:                   "agentic-agent",
+		Question:                   "why is the cluster degraded?",
+		Model:                      "llama3.1:8b",
+		OllamaURL:                  "http://ollama:11434",
+		OllamaWarmup:               true,
+		OllamaWarmupTimeoutSeconds: 120,
+		Kubeconfig:                 "/etc/kubeconfig",
+	}
+	p := buildPayload(spec)
+	if p["question"] != spec.Question {
+		t.Fatalf("unexpected question: %v", p["question"])
+	}
+	if p["ollama_warmup"] != true {
+		t.Fatalf("expected ollama_warmup=true")
+	}
+	if p["ollama_warmup_timeout"] != 120 {
+		t.Fatalf("expected ollama_warmup_timeout=120, got %v", p["ollama_warmup_timeout"])
+	}
+	if p["kubeconfig"] != "/etc/kubeconfig" {
+		t.Fatalf("unexpected kubeconfig: %v", p["kubeconfig"])
+	}
+	for _, k := range []string{"vastai", "template_hash", "vastai_stop_instance", "workflow"} {
+		if _, ok := p[k]; ok {
+			t.Fatalf("agentic-agent payload must not contain key %q", k)
+		}
+	}
+}
+
+func TestBuildPayloadOllamaInstance(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:     "ollama-instance",
+		VastAI:       true,
+		TemplateHash: "abc123",
+		MinDPH:       0.1,
+		MaxDPH:       0.5,
+		Reliability:  0.99,
+		OllamaURL:    "http://ollama:11434",
+	}
+	p := buildPayload(spec)
+	if p["vastai"] != true {
+		t.Fatalf("expected vastai=true")
+	}
+	if p["template_hash"] != "abc123" {
+		t.Fatalf("unexpected template_hash: %v", p["template_hash"])
+	}
+	if p["min_dph"] != 0.1 {
+		t.Fatalf("unexpected min_dph: %v", p["min_dph"])
+	}
+	for _, k := range []string{"question", "model", "kubeconfig", "vastai_stop_instance", "workflow"} {
+		if _, ok := p[k]; ok {
+			t.Fatalf("ollama-instance payload must not contain key %q", k)
+		}
+	}
+}
+
+func TestBuildPayloadBenchmark(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:                   "benchmark",
+		VastAI:                     true,
+		TemplateHash:               "tpl",
+		MinDPH:                     0.2,
+		MaxDPH:                     0.8,
+		Reliability:                0.95,
+		OllamaURL:                  "http://ollama:11434",
+		Question:                   "q",
+		Model:                      "m",
+		OllamaWarmup:               false,
+		OllamaWarmupTimeoutSeconds: 60,
+		Kubeconfig:                 "/kube/config",
+		VastAIStopInstance:         true,
+	}
+	p := buildPayload(spec)
+	for _, k := range []string{
+		"vastai", "template_hash", "min_dph", "max_dph", "reliability",
+		"ollama_url", "question", "model", "ollama_warmup", "ollama_warmup_timeout",
+		"kubeconfig", "vastai_stop_instance",
+	} {
+		if _, ok := p[k]; !ok {
+			t.Fatalf("benchmark payload missing key %q", k)
+		}
+	}
+	if p["vastai_stop_instance"] != true {
+		t.Fatalf("expected vastai_stop_instance=true")
+	}
+	if p["ollama_warmup_timeout"] != 60 {
+		t.Fatalf("expected ollama_warmup_timeout=60, got %v", p["ollama_warmup_timeout"])
+	}
+}
+
+func TestBuildPayloadUnknownWorkflow(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{Workflow: "custom-workflow", Question: "test", Model: "m"}
+	p := buildPayload(spec)
+	if p["workflow"] != "custom-workflow" {
+		t.Fatalf("expected workflow key in fallback payload, got %v", p["workflow"])
+	}
+}
+
+func TestReconcileUsesWorkflowInURL(t *testing.T) {
+	var gotPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-path-check"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "agentic-agent",
+			Question:   "q",
+			Model:      "m",
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}}); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	if gotPath != "/v1/jobs/agentic-agent" {
+		t.Fatalf("expected request to /v1/jobs/agentic-agent, got %q", gotPath)
 	}
 }
 
