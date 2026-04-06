@@ -1,0 +1,84 @@
+name: Epic
+description: Parent issue tracking a body of work (like an agile swim lane)
+labels: ["type/epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Epics group related issues into a trackable work stream. Every issue in this project must belong to an epic.
+        Epics serve as swim lanes — they represent parallel streams of work that can be planned, tracked, and prioritized independently.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "p0 — blocks release or security exposure"
+        - "p1 — must fix in current milestone"
+        - "p2 — planned, not time-sensitive"
+        - "p3 — low priority"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - "area/core"
+        - "area/api"
+        - "area/agents"
+        - "area/ci-cd"
+        - "area/helm"
+        - "area/operator"
+        - "area/ui"
+        - "area/docs"
+        - "area/security"
+        - "area/compliance"
+        - "area/infra"
+        - "area/observability"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: "One sentence: what does 'done' look like for this epic?"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why does this epic exist? What problem does it solve? What milestone does it belong to?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Which repos and components are affected?
+    validations:
+      required: true
+  - type: textarea
+    id: child_issues
+    attributes:
+      label: Child issues
+      description: "Checklist of issues that must be completed to close this epic. Add issues as they are created."
+      value: |
+        - [ ] #
+        - [ ] #
+    validations:
+      required: true
+  - type: textarea
+    id: exit_criteria
+    attributes:
+      label: Exit criteria
+      description: "Concrete, testable conditions that close the epic — beyond just 'all child issues done'."
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and dependencies
+      description: "Blockers, external dependencies, cross-epic dependencies, licensing or security concerns."
+    validations:
+      required: false
