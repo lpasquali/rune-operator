@@ -16,3 +16,5 @@ spec:
   timeoutSeconds: 180
   backoffSeconds: 60
   suspend: false
+  agent: "holmes"
+  attestationRequired: false
