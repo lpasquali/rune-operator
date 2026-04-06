@@ -160,7 +160,7 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 	switch spec.Workflow {
 	case "agentic-agent":
-		return map[string]any{
+		p := map[string]any{
 			"question":              spec.Question,
 			"model":                 spec.Model,
 			"ollama_url":            spec.OllamaURL,
@@ -168,6 +168,10 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
 			"kubeconfig":            spec.Kubeconfig,
 		}
+		if spec.Agent != "" {
+			p["agent"] = spec.Agent
+		}
+		return p
 	case "ollama-instance":
 		return map[string]any{
 			"vastai":        spec.VastAI,
@@ -191,6 +195,7 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
 			"kubeconfig":            spec.Kubeconfig,
 			"vastai_stop_instance":  spec.VastAIStopInstance,
+			"attestation_required":  spec.AttestationRequired,
 		}
 	default:
 		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
@@ -201,6 +206,69 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"ollama_url": spec.OllamaURL,
 		}
 	}
+}
+
+// estimateConfidenceThreshold is the minimum confidence score required from the
+// cost estimation endpoint before a VastAI job may proceed.
+const estimateConfidenceThreshold = 0.95
+
+// estimateResponse is the expected JSON structure from POST /v1/estimates.
+type estimateResponse struct {
+	ConfidenceScore float64 `json:"confidence_score"`
+}
+
+// checkCostEstimate performs a fail-closed pre-flight cost estimation gate.
+// When VastAI is enabled, it calls the /v1/estimates endpoint and verifies
+// confidence >= 0.95. Any HTTP or parse error halts reconciliation.
+func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
+	if !spec.VastAI {
+		return nil
+	}
+
+	estimatePayload := map[string]any{
+		"template_hash": spec.TemplateHash,
+		"min_dph":       spec.MinDPH,
+		"max_dph":       spec.MaxDPH,
+		"reliability":   spec.Reliability,
+	}
+	body, err := jsonMarshal(estimatePayload)
+	if err != nil {
+		return fmt.Errorf("cost estimate: failed to marshal request: %w", err)
+	}
+
+	url := strings.TrimRight(apiBase, "/") + "/v1/estimates"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("cost estimate: failed to build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("cost estimate: HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("cost estimate: failed to read response: %w", err)
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("cost estimate: API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var parsed estimateResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return fmt.Errorf("cost estimate: failed to parse response: %w", err)
+	}
+	if parsed.ConfidenceScore < estimateConfidenceThreshold {
+		return fmt.Errorf("cost estimate: confidence %.2f below threshold %.2f", parsed.ConfidenceScore, estimateConfidenceThreshold)
+	}
+
+	return nil
 }
 
 func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *benchv1alpha1.RuneBenchmark, timeout time.Duration) (benchv1alpha1.RunRecord, error) {
@@ -236,6 +304,11 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	if tokenErr != nil {
 		return record, tokenErr
 	}
+
+	if err := checkCostEstimate(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
+		return record, err
+	}
+
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
