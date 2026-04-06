@@ -1,0 +1,101 @@
+name: Feature Request
+description: New feature or improvement
+labels: ["type/enhancement", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide enough detail for this issue to be implementable by any developer or agent.
+        Refer to [SYSTEM_PROMPT.md](https://github.com/lpasquali/rune-docs/blob/main/docs/context/SYSTEM_PROMPT.md) for DoD levels and audit requirements.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "p0 — blocks release or security exposure"
+        - "p1 — must fix in current milestone"
+        - "p2 — planned, not time-sensitive"
+        - "p3 — low priority"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - "area/core"
+        - "area/api"
+        - "area/agents"
+        - "area/ci-cd"
+        - "area/helm"
+        - "area/operator"
+        - "area/ui"
+        - "area/docs"
+        - "area/security"
+        - "area/compliance"
+        - "area/infra"
+        - "area/observability"
+    validations:
+      required: true
+  - type: dropdown
+    id: dod_level
+    attributes:
+      label: DoD Level
+      description: "Which Definition of Done level applies? See SYSTEM_PROMPT.md."
+      options:
+        - "Level 1 — Full Validation (runtime, API, Helm, Dockerfile changes)"
+        - "Level 2 — Test Infrastructure (test config, CI, coverage, linter only)"
+        - "Level 3 — Documentation (Markdown, MkDocs, diagrams only)"
+    validations:
+      required: true
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent Epic
+      description: "Every issue must belong to an epic. Paste the epic issue URL or #number. If no epic exists yet, create one first."
+      placeholder: "#NNN or https://github.com/lpasquali/repo/issues/NNN"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this needed? What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Numbered list of what must be implemented.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation notes
+      description: "File paths, function names, architectural decisions, relevant ADRs."
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: "Checkboxes. Each must have evidence in the PR. Include any required audit checks (legal check, cyber check) per the trigger table in SYSTEM_PROMPT.md."
+      value: |
+        - [ ]
+        - [ ]
+        - [ ] `legal check:*` (if applicable — specify which)
+        - [ ] `cyber check:*` (if applicable — specify which)
+    validations:
+      required: true
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan evidence required
+      description: "What evidence must be attached to the PR beyond CI? Screenshots, log snippets, before/after diffs."
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
