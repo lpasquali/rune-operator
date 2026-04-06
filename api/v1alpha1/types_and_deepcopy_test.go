@@ -29,7 +29,7 @@ func TestAddToSchemeAndDeepCopy(t *testing.T) {
 	success := metav1.NewTime(time.Now().UTC())
 	rb := &RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns"},
-		Spec:       RuneBenchmarkSpec{Workflow: "wf", Question: "q"},
+		Spec:       RuneBenchmarkSpec{Workflow: "wf", Question: "q", Agent: "holmes", AttestationRequired: true},
 
 		Status: RuneBenchmarkStatus{
 			LastScheduleTime:   &now,
@@ -43,6 +43,12 @@ func TestAddToSchemeAndDeepCopy(t *testing.T) {
 	copyRB := rb.DeepCopy()
 	if copyRB == nil || copyRB.Name != rb.Name || copyRB.Status.LastRun.RunID != "id" {
 		t.Fatalf("unexpected deep copy result: %+v", copyRB)
+	}
+	if copyRB.Spec.Agent != "holmes" {
+		t.Fatalf("expected Agent to be copied, got %q", copyRB.Spec.Agent)
+	}
+	if !copyRB.Spec.AttestationRequired {
+		t.Fatalf("expected AttestationRequired to be copied as true")
 	}
 
 	obj := rb.DeepCopyObject()

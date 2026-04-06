@@ -106,6 +106,12 @@ spec:
                 vastaiStopInstance:
                   type: boolean
                   description: Stop the Vast.ai instance after the benchmark completes (benchmark only)
+                agent:
+                  description: Agent to run for agentic-agent workflow (e.g. holmes, k8sgpt)
+                  type: string
+                attestationRequired:
+                  description: When true, demands SLSA L3 signed provenance before execution
+                  type: boolean
             status:
               type: object
               properties:

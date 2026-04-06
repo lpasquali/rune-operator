@@ -33,6 +33,11 @@ type RuneBenchmarkSpec struct {
 	MaxDPH             float64 `json:"maxDph,omitempty"`
 	Reliability        float64 `json:"reliability,omitempty"`
 	VastAIStopInstance bool    `json:"vastaiStopInstance,omitempty"`
+
+	// Agent to run for agentic-agent workflow (e.g. holmes, k8sgpt)
+	Agent string `json:"agent,omitempty"`
+	// When true, demands SLSA L3 signed provenance before execution
+	AttestationRequired bool `json:"attestationRequired,omitempty"`
 }
 
 type RunRecord struct {

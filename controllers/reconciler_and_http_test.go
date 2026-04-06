@@ -752,3 +752,328 @@ func TestUpsertConditionAndCronError(t *testing.T) {
 		t.Fatalf("expected parse error for invalid cron")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cost estimation pre-flight gate tests
+// ---------------------------------------------------------------------------
+
+func TestEstimatesPreflightSuccess(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/estimates" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-est-ok"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:   ts.URL,
+			Workflow:     "benchmark",
+			VastAI:       true,
+			TemplateHash: "tpl",
+			MinDPH:       0.1,
+			MaxDPH:       0.5,
+			Reliability:  0.95,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected reconcile to succeed, got %v", err)
+	}
+	if res.RequeueAfter == 0 {
+		t.Fatalf("expected requeue after success")
+	}
+
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("fetch updated object: %v", err)
+	}
+	if updated.Status.LastRun.Status != "succeeded" {
+		t.Fatalf("expected succeeded, got %q", updated.Status.LastRun.Status)
+	}
+}
+
+func TestEstimatesPreflightBelowThreshold(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/estimates" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"confidence_score":0.80}`))
+			return
+		}
+		t.Fatal("job endpoint should not be reached")
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:     ts.URL,
+			Workflow:       "benchmark",
+			VastAI:         true,
+			BackoffSeconds: 10,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("reconcile should return nil error, got %v", err)
+	}
+	if res.RequeueAfter != 10*time.Second {
+		t.Fatalf("expected backoff requeue 10s, got %v", res.RequeueAfter)
+	}
+
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("fetch updated: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed, got %q", updated.Status.LastRun.Status)
+	}
+	if !strings.Contains(updated.Status.LastRun.Error, "confidence") {
+		t.Fatalf("expected confidence error in last run, got %q", updated.Status.LastRun.Error)
+	}
+}
+
+func TestEstimatesPreflightHTTPError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/estimates" {
+			http.Error(w, "internal", http.StatusInternalServerError)
+			return
+		}
+		t.Fatal("job endpoint should not be reached")
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:     ts.URL,
+			Workflow:       "benchmark",
+			VastAI:         true,
+			BackoffSeconds: 5,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("reconcile should return nil error, got %v", err)
+	}
+	if res.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected backoff requeue 5s, got %v", res.RequeueAfter)
+	}
+
+	updated := &benchv1alpha1.RuneBenchmark{}
+	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated)
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed, got %q", updated.Status.LastRun.Status)
+	}
+}
+
+func TestEstimatesPreflightParseError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/estimates" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("not-json"))
+			return
+		}
+		t.Fatal("job endpoint should not be reached")
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:     ts.URL,
+			Workflow:       "benchmark",
+			VastAI:         true,
+			BackoffSeconds: 5,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("reconcile should return nil error, got %v", err)
+	}
+	if res.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected backoff, got %v", res.RequeueAfter)
+	}
+
+	updated := &benchv1alpha1.RuneBenchmark{}
+	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated)
+	if !strings.Contains(updated.Status.LastRun.Error, "parse response") {
+		t.Fatalf("expected parse error, got %q", updated.Status.LastRun.Error)
+	}
+}
+
+func TestEstimatesSkippedForLocalWorkflow(t *testing.T) {
+	estimatesCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/estimates" {
+			estimatesCalled = true
+			t.Fatal("estimates should not be called when VastAI is false")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-local"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			VastAI:     false,
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if estimatesCalled {
+		t.Fatal("estimates endpoint should not be called when VastAI is false")
+	}
+}
+
+func TestBuildPayloadAgenticAgentWithAgent(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "agentic-agent",
+		Agent:    "holmes",
+	}
+	p := buildPayload(spec)
+	if p["agent"] != "holmes" {
+		t.Fatalf("expected agent=holmes, got %v", p["agent"])
+	}
+}
+
+func TestBuildPayloadAgenticAgentWithoutAgent(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "agentic-agent",
+	}
+	p := buildPayload(spec)
+	if _, ok := p["agent"]; ok {
+		t.Fatalf("expected agent key to be omitted when empty, got %v", p["agent"])
+	}
+}
+
+func TestBuildPayloadBenchmarkWithAttestationRequired(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:            "benchmark",
+		AttestationRequired: true,
+	}
+	p := buildPayload(spec)
+	if p["attestation_required"] != true {
+		t.Fatalf("expected attestation_required=true, got %v", p["attestation_required"])
+	}
+}
+
+func TestBuildPayloadBenchmarkWithAttestationRequiredFalse(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:            "benchmark",
+		AttestationRequired: false,
+	}
+	p := buildPayload(spec)
+	if p["attestation_required"] != false {
+		t.Fatalf("expected attestation_required=false, got %v", p["attestation_required"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// checkCostEstimate unit tests (direct function calls)
+// ---------------------------------------------------------------------------
+
+func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected nil for non-VastAI, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateMarshalError(t *testing.T) {
+	oldMarshal := jsonMarshal
+	t.Cleanup(func() { jsonMarshal = oldMarshal })
+	jsonMarshal = func(any) ([]byte, error) { return nil, errors.New("marshal-boom") }
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "marshal") {
+		t.Fatalf("expected marshal error, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateBadURL(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), "://bad", spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "build request") {
+		t.Fatalf("expected build request error, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateTransportError(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), "http://127.0.0.1:1", spec, &http.Client{Timeout: 100 * time.Millisecond}, "")
+	if err == nil || !strings.Contains(err.Error(), "HTTP request failed") {
+		t.Fatalf("expected transport error, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateBodyReadError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, _ := hj.Hijack()
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "read response") {
+		t.Fatalf("expected read response error, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateSendsAuthHeader(t *testing.T) {
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "my-token")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer my-token" {
+		t.Fatalf("expected auth header, got %q", gotAuth)
+	}
+}
+
+func TestCheckCostEstimateExactThreshold(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"confidence_score":0.95}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err != nil {
+		t.Fatalf("expected 0.95 to pass threshold, got %v", err)
+	}
+}
