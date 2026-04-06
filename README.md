@@ -3,11 +3,11 @@
 Kubernetes operator for declarative RUNE job scheduling.
 
 ## 📖 Documentation
-All documentation is consolidated in **[rune-docs](https://github.com/lpasquali/rune-docs)**.
+All documentation is consolidated in the **[RUNE Documentation Site](https://lpasquali.github.io/rune-docs/)**.
 
 ## 🛡️ Compliance
-- **ML4**: This repository aligns with **IEC 62443-4-1 ML4** secure development requirements.
-- **SLSA**: Build provenance follows **SLSA Level 3**.
+- **ML4**: This repository is designed to align with **IEC 62443-4-1 ML4** secure development requirements in preparation for future certification.
+- **SLSA**: Build provenance is designed to follow **SLSA Level 3** guidelines.
 
 ## 📜 License
 Apache License 2.0. See [LICENSE](LICENSE).

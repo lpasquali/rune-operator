@@ -403,6 +403,10 @@ jobs:
               'gpl v3',
               'gnu general public license v3',
               'gnu affero general public license',
+              'gplv2',
+              'gpl v2',
+              'gpl-2.0',
+              'gnu general public license v2',
           )
           # Temporary exceptions — keep minimal and document the constraint.
           # All entries MUST be lowercase; comparison uses pkg.lower().
