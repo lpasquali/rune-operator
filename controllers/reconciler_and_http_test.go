@@ -985,6 +985,31 @@ func TestBuildPayloadBenchmarkWithAttestationRequiredFalse(t *testing.T) {
 	}
 }
 
+func TestBuildPayloadBackendTypeNonDefault(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:    "agentic-agent",
+		BackendType: "k8s-inference",
+		Question:    "test",
+	}
+	p := buildPayload(spec)
+	if p["backend_type"] != "k8s-inference" {
+		t.Errorf("expected backend_type=k8s-inference, got %v", p["backend_type"])
+	}
+}
+
+func TestBuildPayloadBackendTypeInAllWorkflows(t *testing.T) {
+	for _, wf := range []string{"agentic-agent", "ollama-instance", "benchmark", "unknown"} {
+		spec := benchv1alpha1.RuneBenchmarkSpec{
+			Workflow:    wf,
+			BackendType: "ollama",
+		}
+		p := buildPayload(spec)
+		if p["backend_type"] != "ollama" {
+			t.Errorf("workflow %q: expected backend_type=ollama, got %v", wf, p["backend_type"])
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // checkCostEstimate unit tests (direct function calls)
 // ---------------------------------------------------------------------------
