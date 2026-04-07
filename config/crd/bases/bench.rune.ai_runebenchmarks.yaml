@@ -91,6 +91,13 @@ spec:
                 type: number
               model:
                 type: string
+              pollIntervalSeconds:
+                description: PollIntervalSeconds is the interval between job status
+                  polls (default 5).
+                format: int32
+                maximum: 60
+                minimum: 2
+                type: integer
               question:
                 type: string
               reliability:
@@ -189,6 +196,9 @@ spec:
                       type: integer
                     error:
                       type: string
+                    result:
+                      description: Result contains the job output as a raw JSON string.
+                      type: string
                     runId:
                       type: string
                     status:
@@ -207,6 +217,9 @@ spec:
                     format: int64
                     type: integer
                   error:
+                    type: string
+                  result:
+                    description: Result contains the job output as a raw JSON string.
                     type: string
                   runId:
                     type: string

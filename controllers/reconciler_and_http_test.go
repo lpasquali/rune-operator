@@ -1343,6 +1343,69 @@ func TestPollTransientError(t *testing.T) {
 	}
 }
 
+func TestPollCapturesResult(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-res"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"succeeded","result":{"answer":"Pod OOM killed"}}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	updated := &benchv1alpha1.RuneBenchmark{}
+	_ = rec.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated)
+	if updated.Status.LastRun.Result == "" {
+		t.Fatal("expected result to be captured")
+	}
+	if !strings.Contains(updated.Status.LastRun.Result, "Pod OOM killed") {
+		t.Fatalf("result should contain answer: %s", updated.Status.LastRun.Result)
+	}
+}
+
+func TestPollNoResultField(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-nores"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	updated := &benchv1alpha1.RuneBenchmark{}
+	_ = rec.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated)
+	if updated.Status.LastRun.Result != "" {
+		t.Fatalf("expected empty result, got: %s", updated.Status.LastRun.Result)
+	}
+}
+
 func TestPollSkippedWhenNoJobID(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
