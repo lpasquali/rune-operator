@@ -1,171 +1,228 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: runebenchmarks.bench.rune.ai
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: runebenchmarks.
 spec:
-  group: bench.rune.ai
+  group: ""
   names:
     kind: RuneBenchmark
     listKind: RuneBenchmarkList
     plural: runebenchmarks
-    singular: runebenchmark
     shortNames:
-      - rbm
+    - rbm
+    singular: runebenchmark
   scope: Namespaced
   versions:
-    - name: v1alpha1
-      served: true
-      storage: true
-      subresources:
-        status: {}
-      additionalPrinterColumns:
-        - jsonPath: .spec.workflow
-          name: Workflow
-          type: string
-        - jsonPath: .status.lastRun.status
-          name: LastRun
-          type: string
-        - jsonPath: .metadata.creationTimestamp
-          name: Age
-          type: date
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              required:
-                - apiBaseUrl
-                - workflow
-              properties:
-                apiBaseUrl:
-                  type: string
-                apiTokenSecretRef:
-                  type: string
-                  description: namespace/name secret reference; key must be token
-                tenant:
-                  type: string
-                workflow:
-                  type: string
-                  enum:
-                    - agentic-agent
-                    - benchmark
-                    - ollama-instance
-                question:
-                  type: string
-                model:
-                  type: string
-                ollamaUrl:
-                  type: string
-                insecureTls:
-                  type: boolean
-                schedule:
-                  type: string
-                  description: Cron expression (minute precision)
-                suspend:
-                  type: boolean
-                timeoutSeconds:
-                  type: integer
-                  format: int32
-                  minimum: 10
-                  maximum: 3600
-                backoffSeconds:
-                  type: integer
-                  format: int32
-                  minimum: 5
-                  maximum: 3600
-                ollamaWarmup:
-                  type: boolean
-                  description: Warm up the Ollama model before running the job (agentic-agent, benchmark)
-                ollamaWarmupTimeoutSeconds:
-                  type: integer
-                  format: int32
-                  minimum: 1
-                  maximum: 600
-                  description: Seconds to wait for Ollama warmup before giving up
-                kubeconfig:
-                  type: string
-                  description: Path to kubeconfig forwarded to the agentic-agent or benchmark job
-                vastai:
-                  type: boolean
-                  description: Provision an Ollama instance on Vast.ai (ollama-instance, benchmark)
-                templateHash:
-                  type: string
-                  description: Vast.ai instance template hash
-                minDph:
-                  type: number
-                  description: Minimum cost per hour (USD) for Vast.ai instance selection
-                maxDph:
-                  type: number
-                  description: Maximum cost per hour (USD) for Vast.ai instance selection
-                reliability:
-                  type: number
-                  minimum: 0
-                  maximum: 1
-                  description: Minimum Vast.ai instance reliability score (0.0–1.0)
-                vastaiStopInstance:
-                  type: boolean
-                  description: Stop the Vast.ai instance after the benchmark completes (benchmark only)
-                agent:
-                  description: Agent to run for agentic-agent workflow (e.g. holmes, k8sgpt)
-                  type: string
-                attestationRequired:
-                  description: When true, demands SLSA L3 signed provenance before execution
-                  type: boolean
-            status:
-              type: object
-              properties:
-                observedGeneration:
-                  type: integer
-                  format: int64
-                consecutiveFailures:
-                  type: integer
-                  format: int32
-                lastScheduleTime:
-                  type: string
-                  format: date-time
-                lastSuccessfulTime:
-                  type: string
-                  format: date-time
-                lastRun:
-                  type: object
+  - additionalPrinterColumns:
+    - jsonPath: .spec.workflow
+      name: Workflow
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.lastRun.status
+      name: LastRun
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: ""
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              agent:
+                description: Agent to run for agentic-agent workflow (e.g. holmes,
+                  k8sgpt)
+                type: string
+              apiBaseUrl:
+                type: string
+              apiTokenSecretRef:
+                type: string
+              attestationRequired:
+                description: When true, demands SLSA L3 signed provenance before execution
+                type: boolean
+              backendUrl:
+                type: string
+              backendWarmup:
+                description: Backend warmup options (agentic-agent, benchmark)
+                type: boolean
+              backendWarmupTimeoutSeconds:
+                format: int32
+                type: integer
+              backoffSeconds:
+                format: int32
+                type: integer
+              insecureTls:
+                type: boolean
+              kubeconfig:
+                description: Kubeconfig path forwarded to agentic-agent and benchmark
+                  jobs
+                type: string
+              maxDph:
+                type: number
+              minDph:
+                type: number
+              model:
+                type: string
+              question:
+                type: string
+              reliability:
+                type: number
+              schedule:
+                type: string
+              suspend:
+                type: boolean
+              templateHash:
+                type: string
+              tenant:
+                type: string
+              timeoutSeconds:
+                format: int32
+                type: integer
+              vastai:
+                description: Vast.ai provisioning options (ollama-instance, benchmark)
+                type: boolean
+              vastaiStopInstance:
+                type: boolean
+              workflow:
+                type: string
+            required:
+            - apiBaseUrl
+            - workflow
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
-                    runId:
-                      type: string
-                    submittedAt:
-                      type: string
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
-                    completedAt:
                       type: string
-                      format: date-time
-                    durationMillis:
-                      type: integer
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
                       format: int64
-                    status:
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
                       type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              consecutiveFailures:
+                format: int32
+                type: integer
+              history:
+                items:
+                  properties:
+                    completedAt:
+                      format: date-time
+                      type: string
+                    durationMillis:
+                      format: int64
+                      type: integer
                     error:
                       type: string
-                history:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      runId:
-                        type: string
-                      submittedAt:
-                        type: string
-                        format: date-time
-                      completedAt:
-                        type: string
-                        format: date-time
-                      durationMillis:
-                        type: integer
-                        format: int64
-                      status:
-                        type: string
-                      error:
-                        type: string
-                conditions:
-                  type: array
-                  items:
-                    x-kubernetes-preserve-unknown-fields: true
+                    runId:
+                      type: string
+                    status:
+                      type: string
+                    submittedAt:
+                      format: date-time
+                      type: string
+                  type: object
+                type: array
+              lastRun:
+                properties:
+                  completedAt:
+                    format: date-time
+                    type: string
+                  durationMillis:
+                    format: int64
+                    type: integer
+                  error:
+                    type: string
+                  runId:
+                    type: string
+                  status:
+                    type: string
+                  submittedAt:
+                    format: date-time
+                    type: string
+                type: object
+              lastScheduleTime:
+                format: date-time
+                type: string
+              lastSuccessfulTime:
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
