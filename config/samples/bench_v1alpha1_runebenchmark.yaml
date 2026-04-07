@@ -9,6 +9,7 @@ spec:
   question: "Why is the cluster degraded?"
   model: "llama3.1:8b"
   backendUrl: "http://ollama.default.svc.cluster.local:11434"
+  backendType: "ollama"
   backendWarmup: true
   backendWarmupTimeoutSeconds: 120
   kubeconfig: ""
