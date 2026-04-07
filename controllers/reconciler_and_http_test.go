@@ -1011,6 +1011,71 @@ func TestBuildPayloadBackendTypeInAllWorkflows(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Idempotency key tests
+// ---------------------------------------------------------------------------
+
+func TestIdempotencyKeyHeaderSent(t *testing.T) {
+	var gotKey string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			gotKey = r.Header.Get("Idempotency-Key")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-idem","status":"succeeded"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 3},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "agentic-agent",
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotKey == "" {
+		t.Fatal("expected Idempotency-Key header to be set")
+	}
+	if !strings.Contains(gotKey, "ns/rb/3/") {
+		t.Fatalf("idempotency key should contain namespace/name/generation, got: %s", gotKey)
+	}
+}
+
+func TestIdempotencyKeyDeterministic(t *testing.T) {
+	var keys []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			keys = append(keys, r.Header.Get("Idempotency-Key"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"job_id":"job-det","status":"succeeded"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "agentic-agent",
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	// Reconcile twice — same generation should produce same key
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if len(keys) < 2 {
+		t.Fatalf("expected 2 keys, got %d", len(keys))
+	}
+	if keys[0] != keys[1] {
+		t.Fatalf("idempotency keys should be deterministic: %q vs %q", keys[0], keys[1])
+	}
+}
+
+// ---------------------------------------------------------------------------
 // checkCostEstimate unit tests (direct function calls)
 // ---------------------------------------------------------------------------
 
