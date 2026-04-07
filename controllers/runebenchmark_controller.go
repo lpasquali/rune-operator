@@ -304,6 +304,17 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		req.Header.Set("X-Tenant-ID", obj.Spec.Tenant)
 	}
 
+	// Deterministic idempotency key: same resource + generation + schedule = same key.
+	// Retries of the same reconciliation produce the same key (safe retry).
+	// New generation or new schedule = new key (new job).
+	scheduleTime := ""
+	if obj.Status.LastScheduleTime != nil {
+		scheduleTime = obj.Status.LastScheduleTime.UTC().Format(time.RFC3339)
+	}
+	idempotencyKey := fmt.Sprintf("%s/%s/%d/%s",
+		obj.Namespace, obj.Name, obj.Generation, scheduleTime)
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+
 	token, tokenErr := r.readToken(ctx, obj)
 	if tokenErr != nil {
 		return record, tokenErr
