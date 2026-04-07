@@ -26,6 +26,11 @@ type RuneBenchmarkSpec struct {
 	BackendWarmup               bool  `json:"backendWarmup,omitempty"`
 	BackendWarmupTimeoutSeconds int32 `json:"backendWarmupTimeoutSeconds,omitempty"`
 
+	// PollIntervalSeconds is the interval between job status polls (default 5).
+	// +kubebuilder:validation:Minimum=2
+	// +kubebuilder:validation:Maximum=60
+	PollIntervalSeconds int32 `json:"pollIntervalSeconds,omitempty"`
+
 	// Kubeconfig path forwarded to agentic-agent and benchmark jobs
 	Kubeconfig string `json:"kubeconfig,omitempty"`
 
