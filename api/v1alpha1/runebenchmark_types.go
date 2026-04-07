@@ -55,6 +55,9 @@ type RunRecord struct {
 	DurationMillis int64       `json:"durationMillis,omitempty"`
 	Status         string      `json:"status,omitempty"`
 	Error          string      `json:"error,omitempty"`
+	// Result contains the job output as a raw JSON string.
+	// +optional
+	Result string `json:"result,omitempty"`
 }
 
 type RuneBenchmarkStatus struct {
