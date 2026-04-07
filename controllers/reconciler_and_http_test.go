@@ -31,6 +31,25 @@ type setupManagerStub struct {
 
 func (m *setupManagerStub) GetEventRecorderFor(string) record.EventRecorder { return m.recorder }
 
+// newJobMockServer creates a test server that handles POST (job submission) and
+// GET (job status polling). POST returns 202 with the given jobID. GET returns
+// "succeeded" immediately. Use customGET to override GET behavior.
+func newJobMockServer(jobID string, customGET http.HandlerFunc) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"` + jobID + `","status":"accepted"}`))
+			return
+		}
+		if customGET != nil {
+			customGET(w, r)
+			return
+		}
+		// Default GET: immediate success
+		_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+	}))
+}
+
 type failingStatusWriter struct {
 	err error
 }
@@ -153,23 +172,37 @@ func TestReconcileSuspend(t *testing.T) {
 }
 
 func TestReconcileSuccessAndStatusUpdate(t *testing.T) {
+	pollCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"job_id":"job-123"}`))
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"job-123","status":"accepted"}`))
+			return
+		}
+		// GET /v1/jobs/job-123 — first call returns "running", then "succeeded"
+		pollCount++
+		if pollCount < 2 {
+			_, _ = w.Write([]byte(`{"status":"running"}`))
+		} else {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+		}
 	}))
 	defer ts.Close()
 
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 2},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL: ts.URL,
-			Workflow:   "wf",
-			Question:   "q",
-			Model:      "m",
+			APIBaseURL:          ts.URL,
+			Workflow:            "wf",
+			Question:            "q",
+			Model:               "m",
+			PollIntervalSeconds: 2, // minimum allowed; fast test
 		},
 	}
 	r, _ := buildReconciler(t, obj)
-	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
 	if err != nil {
 		t.Fatalf("reconcile success path failed: %v", err)
 	}
@@ -193,10 +226,7 @@ func TestReconcileSuccessAndStatusUpdate(t *testing.T) {
 }
 
 func TestReconcileSuccessWithScheduleAndHistoryTrim(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"job_id":"job-abc"}`))
-	}))
+	ts := newJobMockServer("job-abc", nil)
 	defer ts.Close()
 
 	history := make([]benchv1alpha1.RunRecord, 21)
@@ -228,10 +258,7 @@ func TestReconcileSuccessWithScheduleAndHistoryTrim(t *testing.T) {
 }
 
 func TestReconcileSuccessWithInvalidScheduleFallsBack(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"job_id":"job-xyz"}`))
-	}))
+	ts := newJobMockServer("job-xyz", nil)
 	defer ts.Close()
 
 	obj := &benchv1alpha1.RuneBenchmark{
@@ -366,10 +393,7 @@ func TestReconcileStatusUpdateErrorOnFailure(t *testing.T) {
 }
 
 func TestReconcileContinuesWhenActiveScheduleSyncFails(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"job_id":"job-sync"}`))
-	}))
+	ts := newJobMockServer("job-sync", nil)
 	defer ts.Close()
 
 	obj := &benchv1alpha1.RuneBenchmark{
@@ -393,10 +417,7 @@ func TestReconcileContinuesWhenActiveScheduleSyncFails(t *testing.T) {
 }
 
 func TestReconcileStatusUpdateErrorOnSuccess(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"job_id":"job-ok"}`))
-	}))
+	ts := newJobMockServer("job-ok", nil)
 	defer ts.Close()
 
 	obj := &benchv1alpha1.RuneBenchmark{
@@ -418,6 +439,10 @@ func TestReconcileStatusUpdateErrorOnSuccess(t *testing.T) {
 
 func TestExecuteBenchmarkAndReadTokenBranches(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+			return
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer token-value" {
 			t.Fatalf("missing auth header, got %q", got)
 		}
@@ -531,6 +556,10 @@ func TestSyncActiveSchedulesListError(t *testing.T) {
 
 func TestExecuteBenchmarkJobIDNotString(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"job_id":123}`))
 	}))
@@ -712,6 +741,10 @@ func TestBuildPayloadUnknownWorkflow(t *testing.T) {
 func TestReconcileUsesWorkflowInURL(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+			return
+		}
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"job_id":"job-path-check"}`))
@@ -759,6 +792,10 @@ func TestUpsertConditionAndCronError(t *testing.T) {
 
 func TestEstimatesPreflightSuccess(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+			return
+		}
 		if r.URL.Path == "/v1/estimates" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
@@ -914,6 +951,10 @@ func TestEstimatesPreflightParseError(t *testing.T) {
 func TestEstimatesSkippedForLocalWorkflow(t *testing.T) {
 	estimatesCalled := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+			return
+		}
 		if r.URL.Path == "/v1/estimates" {
 			estimatesCalled = true
 			t.Fatal("estimates should not be called when VastAI is false")
@@ -1045,14 +1086,270 @@ func TestIdempotencyKeyHeaderSent(t *testing.T) {
 	}
 }
 
-func TestIdempotencyKeyDeterministic(t *testing.T) {
-	var keys []string
+func TestIdempotencyKeyFormat(t *testing.T) {
+	var gotKey string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			keys = append(keys, r.Header.Get("Idempotency-Key"))
+			gotKey = r.Header.Get("Idempotency-Key")
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"job_id":"job-det","status":"succeeded"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 5},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "agentic-agent",
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if gotKey == "" {
+		t.Fatal("expected Idempotency-Key header")
+	}
+	// Key format: namespace/name/generation/scheduleTime
+	if !strings.HasPrefix(gotKey, "ns/rb/5/") {
+		t.Fatalf("key should start with ns/rb/5/, got: %s", gotKey)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// getJobStatus and polling unit tests
+// ---------------------------------------------------------------------------
+
+func TestGetJobStatusSuccess(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Tenant-ID") != "t1" {
+			t.Errorf("expected tenant header t1")
+		}
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			t.Errorf("expected auth header")
+		}
+		_, _ = w.Write([]byte(`{"status":"succeeded","message":"done"}`))
+	}))
+	defer ts.Close()
+
+	result, err := getJobStatus(context.Background(), ts.URL, "j1", "t1", http.DefaultClient, "tok")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != "succeeded" {
+		t.Fatalf("expected succeeded, got %s", result.Status)
+	}
+}
+
+func TestGetJobStatusRequestError(t *testing.T) {
+	// Invalid URL triggers request creation error
+	_, err := getJobStatus(context.Background(), "://bad", "j1", "", http.DefaultClient, "")
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestGetJobStatusNetworkError(t *testing.T) {
+	// Connect to a port that refuses connections
+	_, err := getJobStatus(context.Background(), "http://127.0.0.1:1", "j1", "", &http.Client{Timeout: time.Second}, "")
+	if err == nil {
+		t.Fatal("expected error for connection refused")
+	}
+}
+
+func TestGetJobStatusHTTPError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte("internal error"))
+	}))
+	defer ts.Close()
+
+	_, err := getJobStatus(context.Background(), ts.URL, "j1", "", http.DefaultClient, "")
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(err.Error(), "status 500") {
+		t.Fatalf("error should mention status 500: %v", err)
+	}
+}
+
+func TestGetJobStatusInvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer ts.Close()
+
+	_, err := getJobStatus(context.Background(), ts.URL, "j1", "", http.DefaultClient, "")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestGetJobStatusNoTenantNoToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Tenant-ID") != "" {
+			t.Error("expected no tenant header")
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("expected no auth header")
+		}
+		_, _ = w.Write([]byte(`{"status":"running"}`))
+	}))
+	defer ts.Close()
+
+	result, err := getJobStatus(context.Background(), ts.URL, "j1", "", http.DefaultClient, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != "running" {
+		t.Fatalf("expected running, got %s", result.Status)
+	}
+}
+
+func TestPollTimeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-timeout"}`))
+			return
+		}
+		// Always return "running" — never completes
+		_, _ = w.Write([]byte(`{"status":"running"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := rec.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("failed to get: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed, got %s", updated.Status.LastRun.Status)
+	}
+	if !strings.Contains(updated.Status.LastRun.Error, "timeout") {
+		t.Fatalf("error should mention timeout: %s", updated.Status.LastRun.Error)
+	}
+}
+
+func TestPollJobFailedWithMessage(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-msg"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"failed","message":"disk full"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	updated := &benchv1alpha1.RuneBenchmark{}
+	_ = rec.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated)
+	if !strings.Contains(updated.Status.LastRun.Error, "disk full") {
+		t.Fatalf("error should contain message: %s", updated.Status.LastRun.Error)
+	}
+}
+
+func TestPollJobFailed(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-fail"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"failed","error":"OOM killed"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := rec.Get(ctx, types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("failed to get updated object: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed status, got %s", updated.Status.LastRun.Status)
+	}
+	if !strings.Contains(updated.Status.LastRun.Error, "OOM killed") {
+		t.Fatalf("error should contain OOM killed: %s", updated.Status.LastRun.Error)
+	}
+}
+
+func TestPollTransientError(t *testing.T) {
+	pollCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-transient"}`))
+			return
+		}
+		pollCount++
+		if pollCount < 2 {
+			// First GET: transient error
+			w.WriteHeader(500)
+			_, _ = w.Write([]byte("temporary failure"))
+			return
+		}
+		// Second GET: success
+		_, _ = w.Write([]byte(`{"status":"succeeded"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected success after transient error recovery: %v", err)
+	}
+}
+
+func TestPollSkippedWhenNoJobID(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			t.Fatal("GET should not be called when no job_id")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer ts.Close()
 
@@ -1064,14 +1361,45 @@ func TestIdempotencyKeyDeterministic(t *testing.T) {
 		},
 	}
 	r, _ := buildReconciler(t, obj)
-	// Reconcile twice — same generation should produce same key
-	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
-	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
-	if len(keys) < 2 {
-		t.Fatalf("expected 2 keys, got %d", len(keys))
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected success when no job_id: %v", err)
 	}
-	if keys[0] != keys[1] {
-		t.Fatalf("idempotency keys should be deterministic: %q vs %q", keys[0], keys[1])
+}
+
+func TestPollCancelled(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"j-cancel"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"cancelled"}`))
+	}))
+	defer ts.Close()
+
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL:          ts.URL,
+			Workflow:            "agentic-agent",
+			PollIntervalSeconds: 2,
+		},
+	}
+	rec, _ := buildReconciler(t, obj)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = rec.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	// Reconciler absorbs the error and records it in status
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := rec.Get(ctx, types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("failed to get updated object: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed status, got %s", updated.Status.LastRun.Status)
+	}
+	if !strings.Contains(updated.Status.LastRun.Error, "cancelled") {
+		t.Fatalf("error should mention cancelled: %s", updated.Status.LastRun.Error)
 	}
 }
 
