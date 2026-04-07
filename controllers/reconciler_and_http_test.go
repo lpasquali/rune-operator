@@ -1477,6 +1477,81 @@ func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
 	}
 }
 
+func TestCheckCostEstimateSkipsWhenNoCostProvider(t *testing.T) {
+	// No VastAI, no CostEstimation providers → skip
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected nil when no providers, got %v", err)
+	}
+}
+
+func TestCheckCostEstimateFiresForAWS(t *testing.T) {
+	var gotPayload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotPayload)
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		CostEstimation: benchv1alpha1.CostEstimation{AWS: true},
+		Model:          "llama3",
+		TimeoutSeconds: 300,
+	}
+	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if gotPayload["aws"] != true {
+		t.Fatal("expected aws=true in payload")
+	}
+	if gotPayload["model"] != "llama3" {
+		t.Fatalf("expected model=llama3, got %v", gotPayload["model"])
+	}
+}
+
+func TestCheckCostEstimateFiresForLocalHardware(t *testing.T) {
+	var gotPayload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotPayload)
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		CostEstimation: benchv1alpha1.CostEstimation{
+			LocalHardware: true,
+			LocalTDPWatts: 350,
+		},
+	}
+	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if gotPayload["local_hardware"] != true {
+		t.Fatal("expected local_hardware=true")
+	}
+	if gotPayload["local_tdp_watts"] != 350.0 {
+		t.Fatalf("expected local_tdp_watts=350, got %v", gotPayload["local_tdp_watts"])
+	}
+}
+
+func TestCheckCostEstimateBackwardCompat(t *testing.T) {
+	// spec.VastAI=true with empty CostEstimation → gate fires
+	called := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if !called {
+		t.Fatal("cost gate should fire when VastAI=true even without explicit CostEstimation")
+	}
+}
+
 func TestCheckCostEstimateMarshalError(t *testing.T) {
 	oldMarshal := jsonMarshal
 	t.Cleanup(func() { jsonMarshal = oldMarshal })
