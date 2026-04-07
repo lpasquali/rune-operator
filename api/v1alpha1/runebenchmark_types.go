@@ -12,16 +12,16 @@ type RuneBenchmarkSpec struct {
 	Workflow          string `json:"workflow"`
 	Question          string `json:"question,omitempty"`
 	Model             string `json:"model,omitempty"`
-	OllamaURL         string `json:"ollamaUrl,omitempty"`
+	BackendURL        string `json:"backendUrl,omitempty"`
 	InsecureTLS       bool   `json:"insecureTls,omitempty"`
 	Schedule          string `json:"schedule,omitempty"`
 	Suspend           bool   `json:"suspend,omitempty"`
 	TimeoutSeconds    int32  `json:"timeoutSeconds,omitempty"`
 	BackoffSeconds    int32  `json:"backoffSeconds,omitempty"`
 
-	// Ollama options (agentic-agent, benchmark)
-	OllamaWarmup               bool  `json:"ollamaWarmup,omitempty"`
-	OllamaWarmupTimeoutSeconds int32 `json:"ollamaWarmupTimeoutSeconds,omitempty"`
+	// Backend warmup options (agentic-agent, benchmark)
+	BackendWarmup               bool  `json:"backendWarmup,omitempty"`
+	BackendWarmupTimeoutSeconds int32 `json:"backendWarmupTimeoutSeconds,omitempty"`
 
 	// Kubeconfig path forwarded to agentic-agent and benchmark jobs
 	Kubeconfig string `json:"kubeconfig,omitempty"`
