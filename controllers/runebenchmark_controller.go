@@ -161,49 +161,49 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 	switch spec.Workflow {
 	case "agentic-agent":
 		p := map[string]any{
-			"question":              spec.Question,
-			"model":                 spec.Model,
-			"ollama_url":            spec.OllamaURL,
-			"ollama_warmup":         spec.OllamaWarmup,
-			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
-			"kubeconfig":            spec.Kubeconfig,
+			"question":               spec.Question,
+			"model":                  spec.Model,
+			"backend_url":            spec.BackendURL,
+			"backend_warmup":         spec.BackendWarmup,
+			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
+			"kubeconfig":             spec.Kubeconfig,
 		}
 		if spec.Agent != "" {
 			p["agent"] = spec.Agent
 		}
 		return p
-	case "ollama-instance":
+	case "ollama-instance", "llm-instance":
 		return map[string]any{
 			"vastai":        spec.VastAI,
 			"template_hash": spec.TemplateHash,
 			"min_dph":       spec.MinDPH,
 			"max_dph":       spec.MaxDPH,
 			"reliability":   spec.Reliability,
-			"ollama_url":    spec.OllamaURL,
+			"backend_url":   spec.BackendURL,
 		}
 	case "benchmark":
 		return map[string]any{
-			"vastai":                spec.VastAI,
-			"template_hash":         spec.TemplateHash,
-			"min_dph":               spec.MinDPH,
-			"max_dph":               spec.MaxDPH,
-			"reliability":           spec.Reliability,
-			"ollama_url":            spec.OllamaURL,
-			"question":              spec.Question,
-			"model":                 spec.Model,
-			"ollama_warmup":         spec.OllamaWarmup,
-			"ollama_warmup_timeout": int(spec.OllamaWarmupTimeoutSeconds),
-			"kubeconfig":            spec.Kubeconfig,
-			"vastai_stop_instance":  spec.VastAIStopInstance,
-			"attestation_required":  spec.AttestationRequired,
+			"vastai":                 spec.VastAI,
+			"template_hash":          spec.TemplateHash,
+			"min_dph":                spec.MinDPH,
+			"max_dph":                spec.MaxDPH,
+			"reliability":            spec.Reliability,
+			"backend_url":            spec.BackendURL,
+			"question":               spec.Question,
+			"model":                  spec.Model,
+			"backend_warmup":         spec.BackendWarmup,
+			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
+			"kubeconfig":             spec.Kubeconfig,
+			"vastai_stop_instance":   spec.VastAIStopInstance,
+			"attestation_required":   spec.AttestationRequired,
 		}
 	default:
 		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
 		return map[string]any{
-			"workflow":   spec.Workflow,
-			"question":   spec.Question,
-			"model":      spec.Model,
-			"ollama_url": spec.OllamaURL,
+			"workflow":    spec.Workflow,
+			"question":    spec.Question,
+			"model":       spec.Model,
+			"backend_url": spec.BackendURL,
 		}
 	}
 }

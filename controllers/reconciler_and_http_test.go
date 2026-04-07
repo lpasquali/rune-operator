@@ -612,23 +612,23 @@ func TestExecuteBenchmarkHTTPTransportError(t *testing.T) {
 
 func TestBuildPayloadAgenticAgent(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                   "agentic-agent",
-		Question:                   "why is the cluster degraded?",
-		Model:                      "llama3.1:8b",
-		OllamaURL:                  "http://ollama:11434",
-		OllamaWarmup:               true,
-		OllamaWarmupTimeoutSeconds: 120,
-		Kubeconfig:                 "/etc/kubeconfig",
+		Workflow:                    "agentic-agent",
+		Question:                    "why is the cluster degraded?",
+		Model:                       "llama3.1:8b",
+		BackendURL:                  "http://ollama:11434",
+		BackendWarmup:               true,
+		BackendWarmupTimeoutSeconds: 120,
+		Kubeconfig:                  "/etc/kubeconfig",
 	}
 	p := buildPayload(spec)
 	if p["question"] != spec.Question {
 		t.Fatalf("unexpected question: %v", p["question"])
 	}
-	if p["ollama_warmup"] != true {
-		t.Fatalf("expected ollama_warmup=true")
+	if p["backend_warmup"] != true {
+		t.Fatalf("expected backend_warmup=true")
 	}
-	if p["ollama_warmup_timeout"] != 120 {
-		t.Fatalf("expected ollama_warmup_timeout=120, got %v", p["ollama_warmup_timeout"])
+	if p["backend_warmup_timeout"] != 120 {
+		t.Fatalf("expected backend_warmup_timeout=120, got %v", p["backend_warmup_timeout"])
 	}
 	if p["kubeconfig"] != "/etc/kubeconfig" {
 		t.Fatalf("unexpected kubeconfig: %v", p["kubeconfig"])
@@ -648,7 +648,7 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 		MinDPH:       0.1,
 		MaxDPH:       0.5,
 		Reliability:  0.99,
-		OllamaURL:    "http://ollama:11434",
+		BackendURL:   "http://ollama:11434",
 	}
 	p := buildPayload(spec)
 	if p["vastai"] != true {
@@ -669,24 +669,24 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 
 func TestBuildPayloadBenchmark(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                   "benchmark",
-		VastAI:                     true,
-		TemplateHash:               "tpl",
-		MinDPH:                     0.2,
-		MaxDPH:                     0.8,
-		Reliability:                0.95,
-		OllamaURL:                  "http://ollama:11434",
-		Question:                   "q",
-		Model:                      "m",
-		OllamaWarmup:               false,
-		OllamaWarmupTimeoutSeconds: 60,
-		Kubeconfig:                 "/kube/config",
-		VastAIStopInstance:         true,
+		Workflow:                    "benchmark",
+		VastAI:                      true,
+		TemplateHash:                "tpl",
+		MinDPH:                      0.2,
+		MaxDPH:                      0.8,
+		Reliability:                 0.95,
+		BackendURL:                  "http://ollama:11434",
+		Question:                    "q",
+		Model:                       "m",
+		BackendWarmup:               false,
+		BackendWarmupTimeoutSeconds: 60,
+		Kubeconfig:                  "/kube/config",
+		VastAIStopInstance:          true,
 	}
 	p := buildPayload(spec)
 	for _, k := range []string{
 		"vastai", "template_hash", "min_dph", "max_dph", "reliability",
-		"ollama_url", "question", "model", "ollama_warmup", "ollama_warmup_timeout",
+		"backend_url", "question", "model", "backend_warmup", "backend_warmup_timeout",
 		"kubeconfig", "vastai_stop_instance",
 	} {
 		if _, ok := p[k]; !ok {
@@ -696,8 +696,8 @@ func TestBuildPayloadBenchmark(t *testing.T) {
 	if p["vastai_stop_instance"] != true {
 		t.Fatalf("expected vastai_stop_instance=true")
 	}
-	if p["ollama_warmup_timeout"] != 60 {
-		t.Fatalf("expected ollama_warmup_timeout=60, got %v", p["ollama_warmup_timeout"])
+	if p["backend_warmup_timeout"] != 60 {
+		t.Fatalf("expected backend_warmup_timeout=60, got %v", p["backend_warmup_timeout"])
 	}
 }
 
