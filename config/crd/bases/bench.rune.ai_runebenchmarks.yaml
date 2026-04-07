@@ -79,6 +79,31 @@ spec:
               backoffSeconds:
                 format: int32
                 type: integer
+              costEstimation:
+                description: CostEstimation configures the pre-flight cost safety
+                  gate.
+                properties:
+                  aws:
+                    type: boolean
+                  azure:
+                    type: boolean
+                  gcp:
+                    type: boolean
+                  localEnergyRateKwh:
+                    type: number
+                  localHardware:
+                    description: Local hardware estimation
+                    type: boolean
+                  localHardwareLifespanYears:
+                    type: number
+                  localHardwarePurchasePrice:
+                    type: number
+                  localTdpWatts:
+                    type: number
+                  vastai:
+                    description: Cloud providers
+                    type: boolean
+                type: object
               insecureTls:
                 type: boolean
               kubeconfig:

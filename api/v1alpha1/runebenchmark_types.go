@@ -42,10 +42,31 @@ type RuneBenchmarkSpec struct {
 	Reliability        float64 `json:"reliability,omitempty"`
 	VastAIStopInstance bool    `json:"vastaiStopInstance,omitempty"`
 
+	// CostEstimation configures the pre-flight cost safety gate.
+	CostEstimation CostEstimation `json:"costEstimation,omitempty"`
+
 	// Agent to run for agentic-agent workflow (e.g. holmes, k8sgpt)
 	Agent string `json:"agent,omitempty"`
 	// When true, demands SLSA L3 signed provenance before execution
 	AttestationRequired bool `json:"attestationRequired,omitempty"`
+}
+
+// CostEstimation configures the pre-flight cost gate.
+// At most one provider flag should be true. If none are set and VastAI provisioning
+// is enabled, the gate fires automatically for backward compatibility.
+type CostEstimation struct {
+	// Cloud providers
+	VastAI bool `json:"vastai,omitempty"`
+	AWS    bool `json:"aws,omitempty"`
+	GCP    bool `json:"gcp,omitempty"`
+	Azure  bool `json:"azure,omitempty"`
+
+	// Local hardware estimation
+	LocalHardware              bool    `json:"localHardware,omitempty"`
+	LocalTDPWatts              float64 `json:"localTdpWatts,omitempty"`
+	LocalEnergyRateKWH         float64 `json:"localEnergyRateKwh,omitempty"`
+	LocalHardwarePurchasePrice float64 `json:"localHardwarePurchasePrice,omitempty"`
+	LocalHardwareLifespanYears float64 `json:"localHardwareLifespanYears,omitempty"`
 }
 
 type RunRecord struct {

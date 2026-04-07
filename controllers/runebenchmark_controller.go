@@ -277,18 +277,42 @@ func maxInt32(a, b int32) int32 {
 }
 
 // checkCostEstimate performs a fail-closed pre-flight cost estimation gate.
-// When VastAI is enabled, it calls the /v1/estimates endpoint and verifies
-// confidence >= 0.95. Any HTTP or parse error halts reconciliation.
+// If any cost provider is enabled (VastAI, AWS, GCP, Azure, LocalHardware),
+// it calls the /v1/estimates endpoint and verifies confidence >= 0.95.
+// For backward compatibility, if no explicit cost estimation is configured but
+// spec.VastAI is true, the gate fires automatically.
 func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
-	if !spec.VastAI {
-		return nil
+	ce := spec.CostEstimation
+
+	// Backward compat: if no explicit costEstimation but vastai provisioning is on, gate it
+	if !ce.VastAI && !ce.AWS && !ce.GCP && !ce.Azure && !ce.LocalHardware {
+		if spec.VastAI {
+			ce.VastAI = true
+		} else {
+			return nil
+		}
 	}
 
 	estimatePayload := map[string]any{
+		// Provider flags
+		"vastai":         ce.VastAI,
+		"aws":            ce.AWS,
+		"gcp":            ce.GCP,
+		"azure":          ce.Azure,
+		"local_hardware": ce.LocalHardware,
+		// Price bounds
 		"template_hash": spec.TemplateHash,
 		"min_dph":       spec.MinDPH,
 		"max_dph":       spec.MaxDPH,
 		"reliability":   spec.Reliability,
+		// Local hardware params
+		"local_tdp_watts":               ce.LocalTDPWatts,
+		"local_energy_rate_kwh":         ce.LocalEnergyRateKWH,
+		"local_hardware_purchase_price": ce.LocalHardwarePurchasePrice,
+		"local_hardware_lifespan_years": ce.LocalHardwareLifespanYears,
+		// Run context
+		"model":                      spec.Model,
+		"estimated_duration_seconds": int(spec.TimeoutSeconds),
 	}
 	body, err := jsonMarshal(estimatePayload)
 	if err != nil {
