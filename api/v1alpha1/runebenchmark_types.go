@@ -13,11 +13,14 @@ type RuneBenchmarkSpec struct {
 	Question          string `json:"question,omitempty"`
 	Model             string `json:"model,omitempty"`
 	BackendURL        string `json:"backendUrl,omitempty"`
-	InsecureTLS       bool   `json:"insecureTls,omitempty"`
-	Schedule          string `json:"schedule,omitempty"`
-	Suspend           bool   `json:"suspend,omitempty"`
-	TimeoutSeconds    int32  `json:"timeoutSeconds,omitempty"`
-	BackoffSeconds    int32  `json:"backoffSeconds,omitempty"`
+	// BackendType is the LLM backend type (e.g., "ollama", "k8s-inference").
+	// +kubebuilder:default="ollama"
+	BackendType    string `json:"backendType,omitempty"`
+	InsecureTLS    bool   `json:"insecureTls,omitempty"`
+	Schedule       string `json:"schedule,omitempty"`
+	Suspend        bool   `json:"suspend,omitempty"`
+	TimeoutSeconds int32  `json:"timeoutSeconds,omitempty"`
+	BackoffSeconds int32  `json:"backoffSeconds,omitempty"`
 
 	// Backend warmup options (agentic-agent, benchmark)
 	BackendWarmup               bool  `json:"backendWarmup,omitempty"`
