@@ -18,3 +18,8 @@ __pycache__/
 # IDE
 *.swp
 *.swo
+
+# Debug / CI logs
+*.log
+*_log.txt
+*_logs.txt
