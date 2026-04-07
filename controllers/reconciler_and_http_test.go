@@ -612,13 +612,13 @@ func TestExecuteBenchmarkHTTPTransportError(t *testing.T) {
 
 func TestBuildPayloadAgenticAgent(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                   "agentic-agent",
-		Question:                   "why is the cluster degraded?",
-		Model:                      "llama3.1:8b",
+		Workflow:                    "agentic-agent",
+		Question:                    "why is the cluster degraded?",
+		Model:                       "llama3.1:8b",
 		BackendURL:                  "http://ollama:11434",
 		BackendWarmup:               true,
 		BackendWarmupTimeoutSeconds: 120,
-		Kubeconfig:                 "/etc/kubeconfig",
+		Kubeconfig:                  "/etc/kubeconfig",
 	}
 	p := buildPayload(spec)
 	if p["question"] != spec.Question {
@@ -648,7 +648,7 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 		MinDPH:       0.1,
 		MaxDPH:       0.5,
 		Reliability:  0.99,
-		BackendURL:    "http://ollama:11434",
+		BackendURL:   "http://ollama:11434",
 	}
 	p := buildPayload(spec)
 	if p["vastai"] != true {
@@ -669,19 +669,19 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 
 func TestBuildPayloadBenchmark(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                   "benchmark",
-		VastAI:                     true,
-		TemplateHash:               "tpl",
-		MinDPH:                     0.2,
-		MaxDPH:                     0.8,
-		Reliability:                0.95,
+		Workflow:                    "benchmark",
+		VastAI:                      true,
+		TemplateHash:                "tpl",
+		MinDPH:                      0.2,
+		MaxDPH:                      0.8,
+		Reliability:                 0.95,
 		BackendURL:                  "http://ollama:11434",
-		Question:                   "q",
-		Model:                      "m",
+		Question:                    "q",
+		Model:                       "m",
 		BackendWarmup:               false,
 		BackendWarmupTimeoutSeconds: 60,
-		Kubeconfig:                 "/kube/config",
-		VastAIStopInstance:         true,
+		Kubeconfig:                  "/kube/config",
+		VastAIStopInstance:          true,
 	}
 	p := buildPayload(spec)
 	for _, k := range []string{
