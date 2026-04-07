@@ -1,0 +1,188 @@
+Verify tag is on main	Set up job	﻿2026-04-07T04:49:54.2632985Z Current runner version: '2.333.1'
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2658744Z ##[group]Runner Image Provisioner
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2659816Z Hosted Compute Agent
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2660421Z Version: 20260213.493
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2661071Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2661800Z Build Date: 2026-02-13T00:28:41Z
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2662411Z Worker ID: {13e27b1d-58a0-4e1b-95ec-ee6c9276d7d2}
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2663126Z Azure Region: eastus
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2663637Z ##[endgroup]
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2665264Z ##[group]Operating System
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2665921Z Ubuntu
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2666366Z 24.04.4
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2666830Z LTS
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2667238Z ##[endgroup]
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2667830Z ##[group]Runner Image
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2668383Z Image: ubuntu-24.04
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2668882Z Version: 20260329.72.1
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2670363Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260329.72/images/ubuntu/Ubuntu2404-Readme.md
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2672106Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260329.72
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2672982Z ##[endgroup]
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2674029Z ##[group]GITHUB_TOKEN Permissions
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2676437Z Contents: read
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2676967Z Metadata: read
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2677467Z ##[endgroup]
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2679912Z Secret source: Actions
+Verify tag is on main	Set up job	2026-04-07T04:49:54.2680868Z Prepare workflow directory
+Verify tag is on main	Set up job	2026-04-07T04:49:54.3008380Z Prepare all required actions
+Verify tag is on main	Set up job	2026-04-07T04:49:54.3045061Z Getting action download info
+Verify tag is on main	Set up job	2026-04-07T04:49:54.6408177Z Download action repository 'actions/checkout@v6' (SHA:de0fac2e4500dabe0009e67214ff5f5447ce83dd)
+Verify tag is on main	Set up job	2026-04-07T04:49:54.8810333Z Complete job name: Verify tag is on main
+Verify tag is on main	Run actions/checkout@v6	﻿2026-04-07T04:49:54.9643279Z ##[group]Run actions/checkout@v6
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9644249Z with:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9644687Z   fetch-depth: 0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9645161Z   repository: lpasquali/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9645920Z   token: ***
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9646363Z   ssh-strict: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9646798Z   ssh-user: git
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9647244Z   persist-credentials: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9647739Z   clean: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9648181Z   sparse-checkout-cone-mode: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9648702Z   fetch-tags: false
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9649142Z   show-progress: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9649828Z   lfs: false
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9650261Z   submodules: false
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9650702Z   set-safe-directory: true
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:54.9651474Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0578881Z Syncing repository: lpasquali/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0581586Z ##[group]Getting Git version info
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0582474Z Working directory is '/home/runner/work/rune-operator/rune-operator'
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0583715Z [command]/usr/bin/git version
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0610371Z git version 2.53.0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0634019Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0649654Z Temporarily overriding HOME='/home/runner/work/_temp/d88e36c9-bc8b-4505-ae95-c0a6fd4d0e79' before making global git config changes
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0654367Z Adding repository directory to the temporary git global config as a safe directory
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0655820Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/rune-operator/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0687107Z Deleting the contents of '/home/runner/work/rune-operator/rune-operator'
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0691186Z ##[group]Initializing the repository
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0695983Z [command]/usr/bin/git init /home/runner/work/rune-operator/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0794106Z hint: Using 'master' as the name for the initial branch. This default branch name
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0795514Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0796718Z hint: to use in all of your new repositories, which will suppress this warning,
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0797615Z hint: call:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0798101Z hint:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0798674Z hint: 	git config --global init.defaultBranch <name>
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0800160Z hint:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0801234Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0802248Z hint: 'development'. The just-created branch can be renamed via this command:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0803043Z hint:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0803643Z hint: 	git branch -m <name>
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0804270Z hint:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0805222Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0806369Z Initialized empty Git repository in /home/runner/work/rune-operator/rune-operator/.git/
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0808209Z [command]/usr/bin/git remote add origin https://github.com/lpasquali/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0834257Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0835118Z ##[group]Disabling automatic garbage collection
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0838349Z [command]/usr/bin/git config --local gc.auto 0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0867898Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0869576Z ##[group]Setting up auth
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0870762Z Removing SSH command configuration
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0877007Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.0909063Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1188246Z Removing HTTP extra header
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1194471Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1224562Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1434475Z Removing includeIf entries pointing to credentials config files
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1440745Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1473551Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1696410Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1735366Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/rune-operator/rune-operator/.git.path /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1766100Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/rune-operator/rune-operator/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1796221Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1826700Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1852036Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1853490Z ##[group]Fetching the repository
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.1862561Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3804109Z From https://github.com/lpasquali/rune-operator
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3806080Z  * [new branch]      ci/align-quality-gates-with-rune -> origin/ci/align-quality-gates-with-rune
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3808189Z  * [new branch]      ci/docker-build-optimization -> origin/ci/docker-build-optimization
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3810593Z  * [new branch]      ci/path-filtering-and-docker-cache -> origin/ci/path-filtering-and-docker-cache
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3812972Z  * [new branch]      docs/generic-agent-instructions -> origin/docs/generic-agent-instructions
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3815298Z  * [new branch]      docs/prune-and-redirect -> origin/docs/prune-and-redirect
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3816986Z  * [new branch]      feat/codeowners-vex-gate -> origin/feat/codeowners-vex-gate
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3818724Z  * [new branch]      feature/124-ml4-peer-review -> origin/feature/124-ml4-peer-review
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3820127Z  * [new branch]      feature/132-license-ci-gate -> origin/feature/132-license-ci-gate
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3821304Z  * [new branch]      feature/31-operator-feature-parity -> origin/feature/31-operator-feature-parity
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3822442Z  * [new branch]      fix/32-license-copyright -> origin/fix/32-license-copyright
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3823452Z  * [new branch]      fix/cd-gate-on-merge-gate -> origin/fix/cd-gate-on-merge-gate
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3824492Z  * [new branch]      fix/native-go-cross-compile -> origin/fix/native-go-cross-compile
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3825495Z  * [new branch]      fix/process-enforcement -> origin/fix/process-enforcement
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3826443Z  * [new branch]      fix/release-workflow    -> origin/fix/release-workflow
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3827279Z  * [new branch]      main                    -> origin/main
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3828007Z  * [new tag]         v0.0.0-a0               -> v0.0.0-a0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3860782Z [command]/usr/bin/git tag --list v0.0.0-a0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3885601Z v0.0.0-a0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3895677Z [command]/usr/bin/git rev-parse refs/tags/v0.0.0-a0^{commit}
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3918563Z 63b0ec713d1dec4ed4d2b34155f37fa737798ab9
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3924715Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3926218Z ##[group]Determining the checkout info
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3927836Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3931009Z [command]/usr/bin/git sparse-checkout disable
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.3983959Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4010880Z ##[group]Checking out the ref
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4015160Z [command]/usr/bin/git checkout --progress --force refs/tags/v0.0.0-a0
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4074314Z Note: switching to 'refs/tags/v0.0.0-a0'.
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4075071Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4075541Z You are in 'detached HEAD' state. You can look around, make experimental
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4076585Z changes and commit them, and you can discard any commits you make in this
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4077883Z state without impacting any branches by switching back to a branch.
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4079086Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4080063Z If you want to create a new branch to retain commits you create, you may
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4081934Z do so (now or later) by using -c with the switch command. Example:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4083083Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4083528Z   git switch -c <new-branch-name>
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4084310Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4084703Z Or undo this operation with:
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4085385Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4085794Z   git switch -
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4086340Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4087234Z Turn off this advice by setting config variable advice.detachedHead to false
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4088458Z 
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4089100Z HEAD is now at 63b0ec7 fix: address release workflow issues (#45)
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4092123Z ##[endgroup]
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4119789Z [command]/usr/bin/git log -1 --format=%H
+Verify tag is on main	Run actions/checkout@v6	2026-04-07T04:49:55.4142504Z 63b0ec713d1dec4ed4d2b34155f37fa737798ab9
+Verify tag is on main	Run git fetch origin main	﻿2026-04-07T04:49:55.4339176Z ##[group]Run git fetch origin main
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4340358Z [36;1mgit fetch origin main[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4341110Z [36;1mif ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4342083Z [36;1m  echo "ERROR: Tagged commit is not reachable from origin/main." >&2[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4342989Z [36;1m  echo "Tags must only be pushed AFTER merging to main." >&2[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4343667Z [36;1m  exit 1[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4344080Z [36;1mfi[0m
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4375021Z shell: /usr/bin/bash -e {0}
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.4375607Z ##[endgroup]
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.5650655Z From https://github.com/lpasquali/rune-operator
+Verify tag is on main	Run git fetch origin main	2026-04-07T04:49:55.5651751Z  * branch            main       -> FETCH_HEAD
+Verify tag is on main	Post Run actions/checkout@v6	﻿2026-04-07T04:49:55.5838542Z Post job cleanup.
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6618427Z [command]/usr/bin/git version
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6655024Z git version 2.53.0
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6695062Z Temporarily overriding HOME='/home/runner/work/_temp/7a56a4be-3d08-4787-9d42-3ac80a392672' before making global git config changes
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6697104Z Adding repository directory to the temporary git global config as a safe directory
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6700805Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/rune-operator/rune-operator
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6730144Z Removing SSH command configuration
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6736160Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.6772355Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7021177Z Removing HTTP extra header
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7027476Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7059994Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7269009Z Removing includeIf entries pointing to credentials config files
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7275532Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7297656Z includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7300158Z includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git/worktrees/*.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7302091Z includeif.gitdir:/github/workspace/.git.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7303607Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7308832Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7330991Z /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7342207Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git.path /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7376452Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git/worktrees/*.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7398288Z /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7409799Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/rune-operator/rune-operator/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7440550Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7461736Z /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7469653Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7502630Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7523176Z /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7533340Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7563415Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Verify tag is on main	Post Run actions/checkout@v6	2026-04-07T04:49:55.7780444Z Removing credentials config '/home/runner/work/_temp/git-credentials-b61009e9-2c1d-4400-9a6a-7c15cbedb3ac.config'
+Verify tag is on main	Complete job	﻿2026-04-07T04:49:55.7933869Z Cleaning up orphan processes
