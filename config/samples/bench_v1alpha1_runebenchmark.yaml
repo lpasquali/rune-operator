@@ -8,9 +8,9 @@ spec:
   workflow: agentic-agent
   question: "Why is the cluster degraded?"
   model: "llama3.1:8b"
-  ollamaUrl: "http://ollama.default.svc.cluster.local:11434"
-  ollamaWarmup: true
-  ollamaWarmupTimeoutSeconds: 120
+  backendUrl: "http://ollama.default.svc.cluster.local:11434"
+  backendWarmup: true
+  backendWarmupTimeoutSeconds: 120
   kubeconfig: ""
   schedule: "*/15 * * * *"
   timeoutSeconds: 180
