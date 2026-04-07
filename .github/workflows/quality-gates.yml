@@ -408,6 +408,8 @@ jobs:
               'gnu affero general public license',
               'gplv2',
               'gpl v2',
+              'gpl-2.0-only',
+              'gpl-2.0-or-later',
               'gpl-2.0',
               'gnu general public license v2',
           )
