@@ -216,9 +216,63 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 // cost estimation endpoint before a VastAI job may proceed.
 const estimateConfidenceThreshold = 0.95
 
+// defaultPollInterval is the default interval between job status polls.
+const defaultPollInterval = 5
+
 // estimateResponse is the expected JSON structure from POST /v1/estimates.
 type estimateResponse struct {
 	ConfidenceScore float64 `json:"confidence_score"`
+}
+
+// jobStatusResponse is the expected JSON from GET /v1/jobs/{job_id}.
+type jobStatusResponse struct {
+	Status  string `json:"status"`
+	Error   string `json:"error,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// getJobStatus polls the Rune API for the actual status of a submitted job.
+func getJobStatus(ctx context.Context, apiBase string, jobID string, tenant string, httpClient *http.Client, token string) (*jobStatusResponse, error) {
+	url := strings.TrimRight(apiBase, "/") + "/v1/jobs/" + jobID
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if tenant != "" {
+		req.Header.Set("X-Tenant-ID", tenant)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var result jobStatusResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return &result, nil
+}
+
+// maxInt32 returns a if positive, otherwise returns fallback b.
+func maxInt32(a, b int32) int32 {
+	if a > 0 {
+		return a
+	}
+	return b
 }
 
 // checkCostEstimate performs a fail-closed pre-flight cost estimation gate.
@@ -346,11 +400,56 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return record, fmt.Errorf("failed to parse RUNE API response as JSON: %w", err)
 	}
-	if id, ok := parsed["job_id"].(string); ok {
-		record.RunID = id
+	jobID, _ := parsed["job_id"].(string)
+	record.RunID = jobID
+
+	if jobID == "" {
+		// No job_id returned — can't poll, treat submission as success
+		record.Status = "succeeded"
+		return record, nil
 	}
-	record.Status = "succeeded"
-	return record, nil
+
+	// Poll for actual completion
+	pollInterval := time.Duration(maxInt32(obj.Spec.PollIntervalSeconds, int32(defaultPollInterval))) * time.Second
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	log := log.FromContext(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			record.Status = "failed"
+			record.Error = "timeout waiting for job completion"
+			return record, fmt.Errorf("job %s: poll timeout", jobID)
+		case <-ticker.C:
+		}
+
+		status, pollErr := getJobStatus(ctx, obj.Spec.APIBaseURL, jobID, obj.Spec.Tenant, clientHTTP, token)
+		if pollErr != nil {
+			log.Info("job poll error (will retry)", "jobId", jobID, "error", pollErr)
+			continue
+		}
+
+		switch status.Status {
+		case "succeeded", "success", "completed":
+			record.Status = "succeeded"
+			return record, nil
+		case "failed", "error":
+			record.Status = "failed"
+			record.Error = status.Message
+			if status.Error != "" {
+				record.Error = status.Error
+			}
+			return record, fmt.Errorf("job %s failed: %s", jobID, record.Error)
+		case "cancelled":
+			record.Status = "failed"
+			record.Error = "job cancelled"
+			return record, fmt.Errorf("job %s was cancelled", jobID)
+		default:
+			// "queued", "running", "accepted" — keep polling
+			continue
+		}
+	}
 }
 
 func (r *RuneBenchmarkReconciler) syncActiveSchedules(ctx context.Context) error {
@@ -398,13 +497,6 @@ func upsertCondition(conditions []metav1.Condition, cond metav1.Condition) []met
 		}
 	}
 	return append(conditions, cond)
-}
-
-func maxInt32(v int32, fallback int32) int32 {
-	if v <= 0 {
-		return fallback
-	}
-	return v
 }
 
 func nextFromCron(spec string, from time.Time) (time.Time, error) {
