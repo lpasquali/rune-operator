@@ -226,9 +226,10 @@ type estimateResponse struct {
 
 // jobStatusResponse is the expected JSON from GET /v1/jobs/{job_id}.
 type jobStatusResponse struct {
-	Status  string `json:"status"`
-	Error   string `json:"error,omitempty"`
-	Message string `json:"message,omitempty"`
+	Status  string          `json:"status"`
+	Error   string          `json:"error,omitempty"`
+	Message string          `json:"message,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
 }
 
 // getJobStatus polls the Rune API for the actual status of a submitted job.
@@ -433,6 +434,9 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 		switch status.Status {
 		case "succeeded", "success", "completed":
 			record.Status = "succeeded"
+			if len(status.Result) > 0 {
+				record.Result = string(status.Result)
+			}
 			return record, nil
 		case "failed", "error":
 			record.Status = "failed"
