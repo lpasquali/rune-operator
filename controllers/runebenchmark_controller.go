@@ -164,6 +164,7 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"question":               spec.Question,
 			"model":                  spec.Model,
 			"backend_url":            spec.BackendURL,
+			"backend_type":           spec.BackendType,
 			"backend_warmup":         spec.BackendWarmup,
 			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
 			"kubeconfig":             spec.Kubeconfig,
@@ -180,6 +181,7 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"max_dph":       spec.MaxDPH,
 			"reliability":   spec.Reliability,
 			"backend_url":   spec.BackendURL,
+			"backend_type":  spec.BackendType,
 		}
 	case "benchmark":
 		return map[string]any{
@@ -189,6 +191,7 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"max_dph":                spec.MaxDPH,
 			"reliability":            spec.Reliability,
 			"backend_url":            spec.BackendURL,
+			"backend_type":           spec.BackendType,
 			"question":               spec.Question,
 			"model":                  spec.Model,
 			"backend_warmup":         spec.BackendWarmup,
@@ -200,10 +203,11 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 	default:
 		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
 		return map[string]any{
-			"workflow":    spec.Workflow,
-			"question":    spec.Question,
-			"model":       spec.Model,
-			"backend_url": spec.BackendURL,
+			"workflow":     spec.Workflow,
+			"question":     spec.Question,
+			"model":        spec.Model,
+			"backend_url":  spec.BackendURL,
+			"backend_type": spec.BackendType,
 		}
 	}
 }

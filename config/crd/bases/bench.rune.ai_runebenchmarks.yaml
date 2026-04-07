@@ -63,6 +63,11 @@ spec:
               attestationRequired:
                 description: When true, demands SLSA L3 signed provenance before execution
                 type: boolean
+              backendType:
+                default: ollama
+                description: BackendType is the LLM backend type (e.g., "ollama",
+                  "k8s-inference").
+                type: string
               backendUrl:
                 type: string
               backendWarmup:
