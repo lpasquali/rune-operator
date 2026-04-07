@@ -1,0 +1,331 @@
+﻿2026-04-07T05:03:14.2197795Z Current runner version: '2.333.1'
+2026-04-07T05:03:14.2222227Z ##[group]Runner Image Provisioner
+2026-04-07T05:03:14.2223077Z Hosted Compute Agent
+2026-04-07T05:03:14.2223682Z Version: 20260213.493
+2026-04-07T05:03:14.2224368Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+2026-04-07T05:03:14.2225126Z Build Date: 2026-02-13T00:28:41Z
+2026-04-07T05:03:14.2225793Z Worker ID: {e3164591-ffb7-4cb2-a8f3-583156e72362}
+2026-04-07T05:03:14.2226552Z Azure Region: westus3
+2026-04-07T05:03:14.2227159Z ##[endgroup]
+2026-04-07T05:03:14.2228825Z ##[group]Operating System
+2026-04-07T05:03:14.2229550Z Ubuntu
+2026-04-07T05:03:14.2230038Z 24.04.4
+2026-04-07T05:03:14.2230533Z LTS
+2026-04-07T05:03:14.2230974Z ##[endgroup]
+2026-04-07T05:03:14.2231612Z ##[group]Runner Image
+2026-04-07T05:03:14.2232159Z Image: ubuntu-24.04
+2026-04-07T05:03:14.2232692Z Version: 20260329.72.1
+2026-04-07T05:03:14.2233909Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260329.72/images/ubuntu/Ubuntu2404-Readme.md
+2026-04-07T05:03:14.2235401Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260329.72
+2026-04-07T05:03:14.2236333Z ##[endgroup]
+2026-04-07T05:03:14.2237442Z ##[group]GITHUB_TOKEN Permissions
+2026-04-07T05:03:14.2239646Z Contents: write
+2026-04-07T05:03:14.2240200Z Metadata: read
+2026-04-07T05:03:14.2240749Z Packages: write
+2026-04-07T05:03:14.2241413Z ##[endgroup]
+2026-04-07T05:03:14.2243406Z Secret source: Actions
+2026-04-07T05:03:14.2244192Z Prepare workflow directory
+2026-04-07T05:03:14.2580948Z Prepare all required actions
+2026-04-07T05:03:14.2619257Z Getting action download info
+2026-04-07T05:03:14.7023345Z Download action repository 'docker/setup-buildx-action@v4' (SHA:4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd)
+2026-04-07T05:03:15.8255415Z Download action repository 'docker/login-action@v3' (SHA:c94ce9fb468520275223c153574b00df6fe4bcc9)
+2026-04-07T05:03:17.1554282Z Complete job name: Release/Publish-Manifest-and-Release
+2026-04-07T05:03:17.2414166Z ##[group]Run docker/setup-buildx-action@v4
+2026-04-07T05:03:17.2415655Z with:
+2026-04-07T05:03:17.2416387Z   driver: docker-container
+2026-04-07T05:03:17.2417262Z   use: true
+2026-04-07T05:03:17.2417966Z   keep-state: false
+2026-04-07T05:03:17.2419038Z   cache-binary: true
+2026-04-07T05:03:17.2419835Z   cleanup: true
+2026-04-07T05:03:17.2420830Z ##[endgroup]
+2026-04-07T05:03:17.4446501Z ##[group]Docker info
+2026-04-07T05:03:17.4448054Z [command]/usr/bin/docker version
+2026-04-07T05:03:17.4850488Z Client: Docker Engine - Community
+2026-04-07T05:03:17.4855259Z  Version:           28.0.4
+2026-04-07T05:03:17.4856350Z  API version:       1.48
+2026-04-07T05:03:17.4857251Z  Go version:        go1.23.7
+2026-04-07T05:03:17.4858177Z  Git commit:        b8034c0
+2026-04-07T05:03:17.4859417Z  Built:             Tue Mar 25 15:07:16 2025
+2026-04-07T05:03:17.4860503Z  OS/Arch:           linux/amd64
+2026-04-07T05:03:17.4861441Z  Context:           default
+2026-04-07T05:03:17.4862004Z 
+2026-04-07T05:03:17.4862453Z Server: Docker Engine - Community
+2026-04-07T05:03:17.4863422Z  Engine:
+2026-04-07T05:03:17.4864125Z   Version:          28.0.4
+2026-04-07T05:03:17.4865100Z   API version:      1.48 (minimum version 1.24)
+2026-04-07T05:03:17.4866730Z   Go version:       go1.23.7
+2026-04-07T05:03:17.4867676Z   Git commit:       6430e49
+2026-04-07T05:03:17.4868915Z   Built:            Tue Mar 25 15:07:16 2025
+2026-04-07T05:03:17.4869991Z   OS/Arch:          linux/amd64
+2026-04-07T05:03:17.4870941Z   Experimental:     false
+2026-04-07T05:03:17.4871797Z  containerd:
+2026-04-07T05:03:17.4872544Z   Version:          v2.2.2
+2026-04-07T05:03:17.4873634Z   GitCommit:        301b2dac98f15c27117da5c8af12118a041a31d9
+2026-04-07T05:03:17.4875329Z  runc:
+2026-04-07T05:03:17.4876041Z   Version:          1.3.4
+2026-04-07T05:03:17.4876933Z   GitCommit:        v1.3.4-0-gd6d73eb8
+2026-04-07T05:03:17.4877942Z  docker-init:
+2026-04-07T05:03:17.4878964Z   Version:          0.19.0
+2026-04-07T05:03:17.4880127Z   GitCommit:        de40ad0
+2026-04-07T05:03:17.4903175Z [command]/usr/bin/docker info
+2026-04-07T05:03:17.6740845Z Client: Docker Engine - Community
+2026-04-07T05:03:17.6742196Z  Version:    28.0.4
+2026-04-07T05:03:17.6743006Z  Context:    default
+2026-04-07T05:03:17.6743804Z  Debug Mode: false
+2026-04-07T05:03:17.6744565Z  Plugins:
+2026-04-07T05:03:17.6745318Z   buildx: Docker Buildx (Docker Inc.)
+2026-04-07T05:03:17.6746337Z     Version:  v0.32.1
+2026-04-07T05:03:17.6747372Z     Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+2026-04-07T05:03:17.6749435Z   compose: Docker Compose (Docker Inc.)
+2026-04-07T05:03:17.6751069Z     Version:  v2.38.2
+2026-04-07T05:03:17.6752652Z     Path:     /usr/libexec/docker/cli-plugins/docker-compose
+2026-04-07T05:03:17.6754105Z 
+2026-04-07T05:03:17.6754549Z Server:
+2026-04-07T05:03:17.6755580Z  Containers: 0
+2026-04-07T05:03:17.6756731Z   Running: 0
+2026-04-07T05:03:17.6757846Z   Paused: 0
+2026-04-07T05:03:17.6759110Z   Stopped: 0
+2026-04-07T05:03:17.6760188Z  Images: 6
+2026-04-07T05:03:17.6761189Z  Server Version: 28.0.4
+2026-04-07T05:03:17.6762072Z  Storage Driver: overlay2
+2026-04-07T05:03:17.6762967Z   Backing Filesystem: extfs
+2026-04-07T05:03:17.6763874Z   Supports d_type: true
+2026-04-07T05:03:17.6764715Z   Using metacopy: false
+2026-04-07T05:03:17.6765582Z   Native Overlay Diff: false
+2026-04-07T05:03:17.6766857Z   userxattr: false
+2026-04-07T05:03:17.6767713Z  Logging Driver: json-file
+2026-04-07T05:03:17.6769025Z  Cgroup Driver: systemd
+2026-04-07T05:03:17.6769877Z  Cgroup Version: 2
+2026-04-07T05:03:17.6770740Z  Plugins:
+2026-04-07T05:03:17.6771494Z   Volume: local
+2026-04-07T05:03:17.6772397Z   Network: bridge host ipvlan macvlan null overlay
+2026-04-07T05:03:17.6774100Z   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2026-04-07T05:03:17.6775569Z  Swarm: inactive
+2026-04-07T05:03:17.6776379Z  Runtimes: io.containerd.runc.v2 runc
+2026-04-07T05:03:17.6777537Z  Default Runtime: runc
+2026-04-07T05:03:17.6778387Z  Init Binary: docker-init
+2026-04-07T05:03:17.6780434Z  containerd version: 301b2dac98f15c27117da5c8af12118a041a31d9
+2026-04-07T05:03:17.6781893Z  runc version: v1.3.4-0-gd6d73eb8
+2026-04-07T05:03:17.6783220Z  init version: de40ad0
+2026-04-07T05:03:17.6784042Z  Security Options:
+2026-04-07T05:03:17.6785154Z   apparmor
+2026-04-07T05:03:17.6785934Z   seccomp
+2026-04-07T05:03:17.6786687Z    Profile: builtin
+2026-04-07T05:03:17.6787484Z   cgroupns
+2026-04-07T05:03:17.6788216Z  Kernel Version: 6.17.0-1008-azure
+2026-04-07T05:03:17.6789684Z  Operating System: Ubuntu 24.04.4 LTS
+2026-04-07T05:03:17.6790912Z  OSType: linux
+2026-04-07T05:03:17.6791842Z  Architecture: x86_64
+2026-04-07T05:03:17.6792865Z  CPUs: 4
+2026-04-07T05:03:17.6793667Z  Total Memory: 15.62GiB
+2026-04-07T05:03:17.6794606Z  Name: runnervm727z3
+2026-04-07T05:03:17.6795670Z  ID: 0f5a37c5-64f3-4e6f-bd1e-9f132979e004
+2026-04-07T05:03:17.6796854Z  Docker Root Dir: /var/lib/docker
+2026-04-07T05:03:17.6797936Z  Debug Mode: false
+2026-04-07T05:03:17.6798978Z  Username: githubactions
+2026-04-07T05:03:17.6799877Z  Experimental: false
+2026-04-07T05:03:17.6800691Z  Insecure Registries:
+2026-04-07T05:03:17.6806127Z   ::1/128
+2026-04-07T05:03:17.6806985Z   127.0.0.0/8
+2026-04-07T05:03:17.6808722Z  Live Restore Enabled: false
+2026-04-07T05:03:17.6809993Z 
+2026-04-07T05:03:17.6811767Z ##[endgroup]
+2026-04-07T05:03:17.7375449Z ##[group]Buildx version
+2026-04-07T05:03:17.7392663Z [command]/usr/bin/docker buildx version
+2026-04-07T05:03:17.7934363Z github.com/docker/buildx v0.32.1 d3bfb3f4e48a67dda56e957a6636f4fab6c5fcb2
+2026-04-07T05:03:17.7969495Z ##[endgroup]
+2026-04-07T05:03:17.8112888Z ##[group]Inspecting default docker context
+2026-04-07T05:03:17.8244808Z [
+2026-04-07T05:03:17.8245567Z   {
+2026-04-07T05:03:17.8246235Z     "Name": "default",
+2026-04-07T05:03:17.8247279Z     "Metadata": {},
+2026-04-07T05:03:17.8248224Z     "Endpoints": {
+2026-04-07T05:03:17.8249381Z       "docker": {
+2026-04-07T05:03:17.8250453Z         "Host": "unix:///var/run/docker.sock",
+2026-04-07T05:03:17.8251748Z         "SkipTLSVerify": false
+2026-04-07T05:03:17.8252753Z       }
+2026-04-07T05:03:17.8253928Z     },
+2026-04-07T05:03:17.8254638Z     "TLSMaterial": {},
+2026-04-07T05:03:17.8255657Z     "Storage": {
+2026-04-07T05:03:17.8256567Z       "MetadataPath": "<IN MEMORY>",
+2026-04-07T05:03:17.8257689Z       "TLSPath": "<IN MEMORY>"
+2026-04-07T05:03:17.8259068Z     }
+2026-04-07T05:03:17.8259827Z   }
+2026-04-07T05:03:17.8260610Z ]
+2026-04-07T05:03:17.8262064Z ##[endgroup]
+2026-04-07T05:03:17.8263576Z ##[group]Creating a new builder instance
+2026-04-07T05:03:17.9739140Z [command]/usr/bin/docker buildx create --name builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd --driver docker-container --buildkitd-flags --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host --use
+2026-04-07T05:03:18.0337379Z builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd
+2026-04-07T05:03:18.0373909Z ##[endgroup]
+2026-04-07T05:03:18.0374694Z ##[group]Booting builder
+2026-04-07T05:03:18.0405702Z [command]/usr/bin/docker buildx inspect --bootstrap --builder builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd
+2026-04-07T05:03:18.1004629Z #1 [internal] booting buildkit
+2026-04-07T05:03:18.2505846Z #1 pulling image moby/buildkit:buildx-stable-1
+2026-04-07T05:03:23.6393342Z #1 pulling image moby/buildkit:buildx-stable-1 5.5s done
+2026-04-07T05:03:23.7885171Z #1 creating container buildx_buildkit_builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd0
+2026-04-07T05:03:23.8898115Z #1 creating container buildx_buildkit_builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd0 0.3s done
+2026-04-07T05:03:23.8922191Z #1 DONE 5.8s
+2026-04-07T05:03:23.9256612Z Name:          builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd
+2026-04-07T05:03:23.9257261Z Driver:        docker-container
+2026-04-07T05:03:23.9257818Z Last Activity: 2026-04-07 05:03:18 +0000 UTC
+2026-04-07T05:03:23.9258199Z 
+2026-04-07T05:03:23.9258338Z Nodes:
+2026-04-07T05:03:23.9259048Z Name:                  builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd0
+2026-04-07T05:03:23.9259852Z Endpoint:              unix:///var/run/docker.sock
+2026-04-07T05:03:23.9260735Z Status:                running
+2026-04-07T05:03:23.9261371Z BuildKit daemon flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+2026-04-07T05:03:23.9262018Z BuildKit version:      v0.28.1
+2026-04-07T05:03:23.9262374Z Platforms:             linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/386
+2026-04-07T05:03:23.9262772Z Labels:
+2026-04-07T05:03:23.9263023Z  org.mobyproject.buildkit.worker.executor:         oci
+2026-04-07T05:03:23.9263455Z  org.mobyproject.buildkit.worker.hostname:         3eadbc7f0352
+2026-04-07T05:03:23.9263882Z  org.mobyproject.buildkit.worker.network:          host
+2026-04-07T05:03:23.9264313Z  org.mobyproject.buildkit.worker.oci.process-mode: sandbox
+2026-04-07T05:03:23.9264739Z  org.mobyproject.buildkit.worker.selinux.enabled:  false
+2026-04-07T05:03:23.9265159Z  org.mobyproject.buildkit.worker.snapshotter:      overlayfs
+2026-04-07T05:03:23.9265600Z GC Policy rule#0:
+2026-04-07T05:03:23.9265860Z  All:            false
+2026-04-07T05:03:23.9266247Z  Filters:        type==source.local,type==exec.cachemount,type==source.git.checkout
+2026-04-07T05:03:23.9266681Z  Keep Duration:  48h0m0s
+2026-04-07T05:03:23.9266930Z  Max Used Space: 488.3MiB
+2026-04-07T05:03:23.9267161Z GC Policy rule#1:
+2026-04-07T05:03:23.9267380Z  All:            false
+2026-04-07T05:03:23.9267643Z  Keep Duration:  1440h0m0s
+2026-04-07T05:03:23.9267883Z  Reserved Space: 9.313GiB
+2026-04-07T05:03:23.9268154Z  Max Used Space: 93.13GiB
+2026-04-07T05:03:23.9268373Z  Min Free Space: 27.01GiB
+2026-04-07T05:03:23.9268917Z GC Policy rule#2:
+2026-04-07T05:03:23.9269268Z  All:            false
+2026-04-07T05:03:23.9269724Z  Reserved Space: 9.313GiB
+2026-04-07T05:03:23.9270108Z  Max Used Space: 93.13GiB
+2026-04-07T05:03:23.9270486Z  Min Free Space: 27.01GiB
+2026-04-07T05:03:23.9270791Z GC Policy rule#3:
+2026-04-07T05:03:23.9271096Z  All:            true
+2026-04-07T05:03:23.9271317Z  Reserved Space: 9.313GiB
+2026-04-07T05:03:23.9271540Z  Max Used Space: 93.13GiB
+2026-04-07T05:03:23.9271774Z  Min Free Space: 27.01GiB
+2026-04-07T05:03:23.9319842Z ##[endgroup]
+2026-04-07T05:03:24.0271545Z ##[group]Inspect builder
+2026-04-07T05:03:24.0273343Z {
+2026-04-07T05:03:24.0273666Z   "nodes": [
+2026-04-07T05:03:24.0273962Z     {
+2026-04-07T05:03:24.0274401Z       "name": "builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd0",
+2026-04-07T05:03:24.0275036Z       "endpoint": "unix:///var/run/docker.sock",
+2026-04-07T05:03:24.0275529Z       "status": "running",
+2026-04-07T05:03:24.0276432Z       "buildkitd-flags": "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host",
+2026-04-07T05:03:24.0277356Z       "buildkit": "v0.28.1",
+2026-04-07T05:03:24.0277894Z       "platforms": "linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386",
+2026-04-07T05:03:24.0278652Z       "features": {
+2026-04-07T05:03:24.0279203Z         "Automatically load images to the Docker Engine image store": true,
+2026-04-07T05:03:24.0279843Z         "Cache export": true,
+2026-04-07T05:03:24.0280259Z         "Direct push": true,
+2026-04-07T05:03:24.0280642Z         "Docker exporter": true,
+2026-04-07T05:03:24.0281043Z         "Multi-platform build": true,
+2026-04-07T05:03:24.0281456Z         "OCI exporter": true
+2026-04-07T05:03:24.0281799Z       },
+2026-04-07T05:03:24.0282064Z       "labels": {
+2026-04-07T05:03:24.0282482Z         "org.mobyproject.buildkit.worker.executor": "oci",
+2026-04-07T05:03:24.0283142Z         "org.mobyproject.buildkit.worker.hostname": "3eadbc7f0352",
+2026-04-07T05:03:24.0283861Z         "org.mobyproject.buildkit.worker.network": "host",
+2026-04-07T05:03:24.0284375Z         "org.mobyproject.buildkit.worker.oci.process-mode": "sandbox",
+2026-04-07T05:03:24.0285086Z         "org.mobyproject.buildkit.worker.selinux.enabled": "false",
+2026-04-07T05:03:24.0285658Z         "org.mobyproject.buildkit.worker.snapshotter": "overlayfs"
+2026-04-07T05:03:24.0286384Z       },
+2026-04-07T05:03:24.0286700Z       "gcPolicy": [
+2026-04-07T05:03:24.0286952Z         {
+2026-04-07T05:03:24.0287428Z           "all": false,
+2026-04-07T05:03:24.0287823Z           "filter": [
+2026-04-07T05:03:24.0288260Z             "type==source.local",
+2026-04-07T05:03:24.0289003Z             "type==exec.cachemount",
+2026-04-07T05:03:24.0289321Z             "type==source.git.checkout"
+2026-04-07T05:03:24.0289587Z           ],
+2026-04-07T05:03:24.0289784Z           "keepDuration": "48h0m0s",
+2026-04-07T05:03:24.0290147Z           "maxUsedSpace": "488.3MiB"
+2026-04-07T05:03:24.0290526Z         },
+2026-04-07T05:03:24.0290825Z         {
+2026-04-07T05:03:24.0291144Z           "all": false,
+2026-04-07T05:03:24.0291561Z           "keepDuration": "1440h0m0s",
+2026-04-07T05:03:24.0291908Z           "reservedSpace": "9.313GiB",
+2026-04-07T05:03:24.0292171Z           "maxUsedSpace": "93.13GiB",
+2026-04-07T05:03:24.0292436Z           "minFreeSpace": "27.01GiB"
+2026-04-07T05:03:24.0292673Z         },
+2026-04-07T05:03:24.0292850Z         {
+2026-04-07T05:03:24.0293029Z           "all": false,
+2026-04-07T05:03:24.0293264Z           "reservedSpace": "9.313GiB",
+2026-04-07T05:03:24.0293519Z           "maxUsedSpace": "93.13GiB",
+2026-04-07T05:03:24.0293782Z           "minFreeSpace": "27.01GiB"
+2026-04-07T05:03:24.0294024Z         },
+2026-04-07T05:03:24.0294191Z         {
+2026-04-07T05:03:24.0294371Z           "all": true,
+2026-04-07T05:03:24.0294588Z           "reservedSpace": "9.313GiB",
+2026-04-07T05:03:24.0294854Z           "maxUsedSpace": "93.13GiB",
+2026-04-07T05:03:24.0295118Z           "minFreeSpace": "27.01GiB"
+2026-04-07T05:03:24.0295354Z         }
+2026-04-07T05:03:24.0295519Z       ]
+2026-04-07T05:03:24.0295689Z     }
+2026-04-07T05:03:24.0295849Z   ],
+2026-04-07T05:03:24.0296096Z   "name": "builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd",
+2026-04-07T05:03:24.0296433Z   "driver": "docker-container",
+2026-04-07T05:03:24.0296694Z   "lastActivity": "2026-04-07T05:03:18.000Z"
+2026-04-07T05:03:24.0296955Z }
+2026-04-07T05:03:24.0297355Z ##[endgroup]
+2026-04-07T05:03:24.0297708Z ##[group]BuildKit version
+2026-04-07T05:03:24.0299750Z builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd0: v0.28.1
+2026-04-07T05:03:24.0300906Z ##[endgroup]
+2026-04-07T05:03:24.0539471Z ##[group]Run docker/login-action@v3
+2026-04-07T05:03:24.0539772Z with:
+2026-04-07T05:03:24.0539968Z   registry: ghcr.io
+2026-04-07T05:03:24.0540180Z   username: lpasquali
+2026-04-07T05:03:24.0540783Z   password: ***
+2026-04-07T05:03:24.0540997Z   logout: true
+2026-04-07T05:03:24.0541186Z ##[endgroup]
+2026-04-07T05:03:24.3607972Z Logging into ghcr.io...
+2026-04-07T05:03:24.9277723Z Login Succeeded!
+2026-04-07T05:03:24.9414613Z ##[group]Run docker buildx imagetools create \
+2026-04-07T05:03:24.9415050Z [36;1mdocker buildx imagetools create \[0m
+2026-04-07T05:03:24.9415421Z [36;1m  --tag ghcr.io/lpasquali/rune-operator:v0.0.0-a0 \[0m
+2026-04-07T05:03:24.9415813Z [36;1m  --tag ghcr.io/lpasquali/rune-operator:latest \[0m
+2026-04-07T05:03:24.9416176Z [36;1m  ghcr.io/lpasquali/rune-operator:v0.0.0-a0-amd64 \[0m
+2026-04-07T05:03:24.9416537Z [36;1m  ghcr.io/lpasquali/rune-operator:v0.0.0-a0-arm64[0m
+2026-04-07T05:03:24.9445651Z shell: /usr/bin/bash -e {0}
+2026-04-07T05:03:24.9445916Z ##[endgroup]
+2026-04-07T05:03:25.4996837Z #1 [internal] pushing ghcr.io/lpasquali/rune-operator
+2026-04-07T05:03:25.6507539Z #1 0.000 copying sha256:c2fd67621f55e0ce978d5891e83bee2bc4f0db68bf66b99a4629fcbc42467d5a from ghcr.io/lpasquali/rune-operator:v0.0.0-a0-amd64 to ghcr.io/lpasquali/rune-operator
+2026-04-07T05:03:25.6509585Z #1 0.000 copying sha256:24d8bc9fa13271dddc90c97f7890bfe4a67fbe8d0d0b00548388effd3a9547d2 from ghcr.io/lpasquali/rune-operator:v0.0.0-a0-arm64 to ghcr.io/lpasquali/rune-operator
+2026-04-07T05:03:25.6510945Z #1 0.000 copying sha256:e672b1aaa93e4cb6d8f58ca4f1c5123f4cc7eedf97f4a4a22be959333bb90ba2 from ghcr.io/lpasquali/rune-operator:v0.0.0-a0-amd64 to ghcr.io/lpasquali/rune-operator
+2026-04-07T05:03:25.6512314Z #1 0.000 copying sha256:4972e3a3d7d9acd38a71bd5161c198bd543b3968804728f41b0ec7aae778d678 from ghcr.io/lpasquali/rune-operator:v0.0.0-a0-arm64 to ghcr.io/lpasquali/rune-operator
+2026-04-07T05:03:26.6485593Z #1 1.149 pushing sha256:1088187de750fe962d785faf147b91a1adf5bc40708763e5a8270586480e9fe4 to ghcr.io/lpasquali/rune-operator:v0.0.0-a0
+2026-04-07T05:03:26.9915954Z #1 1.492 pushing sha256:1088187de750fe962d785faf147b91a1adf5bc40708763e5a8270586480e9fe4 to ghcr.io/lpasquali/rune-operator:latest
+2026-04-07T05:03:27.3376109Z #1 DONE 1.8s
+2026-04-07T05:03:27.3509713Z ##[group]Run gh release create "v0.0.0-a0" \
+2026-04-07T05:03:27.3510139Z [36;1mgh release create "v0.0.0-a0" \[0m
+2026-04-07T05:03:27.3510440Z [36;1m  --title "v0.0.0-a0" \[0m
+2026-04-07T05:03:27.3510700Z [36;1m  --generate-notes \[0m
+2026-04-07T05:03:27.3510982Z [36;1m  --verify-tag[0m
+2026-04-07T05:03:27.3536859Z shell: /usr/bin/bash -e {0}
+2026-04-07T05:03:27.3537093Z env:
+2026-04-07T05:03:27.3537500Z   GITHUB_TOKEN: ***
+2026-04-07T05:03:27.3537702Z ##[endgroup]
+2026-04-07T05:03:27.4275779Z failed to run git: fatal: not a git repository (or any of the parent directories): .git
+2026-04-07T05:03:27.4293184Z 
+2026-04-07T05:03:27.4303301Z ##[error]Process completed with exit code 1.
+2026-04-07T05:03:27.4369304Z Post job cleanup.
+2026-04-07T05:03:27.7378351Z ##[group]Logout from ghcr.io
+2026-04-07T05:03:27.7425657Z [command]/usr/bin/docker logout ghcr.io
+2026-04-07T05:03:27.7551407Z Removing login credentials for ghcr.io
+2026-04-07T05:03:27.7581693Z ##[endgroup]
+2026-04-07T05:03:27.7582134Z ##[group]Post cache
+2026-04-07T05:03:27.7584219Z State not set
+2026-04-07T05:03:27.7585059Z ##[endgroup]
+2026-04-07T05:03:27.7721666Z Post job cleanup.
+2026-04-07T05:03:27.9699156Z ##[group]Removing builder
+2026-04-07T05:03:28.0654129Z [command]/usr/bin/docker buildx rm builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd
+2026-04-07T05:03:28.2068983Z builder-8bc874be-002f-400e-b4fb-0a4b0c51e6bd removed
+2026-04-07T05:03:28.2106240Z ##[endgroup]
+2026-04-07T05:03:28.2107577Z ##[group]Cleaning up certificates
+2026-04-07T05:03:28.2110122Z ##[endgroup]
+2026-04-07T05:03:28.2110669Z ##[group]Post cache
+2026-04-07T05:03:28.2112018Z State not set
+2026-04-07T05:03:28.2112552Z ##[endgroup]
+2026-04-07T05:03:28.2240265Z Cleaning up orphan processes
+2026-04-07T05:03:28.2523909Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: docker/login-action@v3. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
