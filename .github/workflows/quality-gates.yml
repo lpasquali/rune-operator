@@ -330,7 +330,7 @@ jobs:
           print(f"✓ CVE policy passed: {len(findings)} vulnerabilities total, {len(blocked)} fixable blocked, {len(warned)} unfixable warned")
           PY
       - name: Attest SBOM provenance — SLSA L3
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: sbom/operator-image.cdx.json
 
