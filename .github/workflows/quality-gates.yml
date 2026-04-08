@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Quality Gates (Rune Operator)
+name: Quality Gates
 
 on:
   pull_request:
@@ -9,405 +9,38 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  pull-requests: write
+  id-token: write
+  attestations: write
+  packages: write
 
 jobs:
-  # ─── Path-change detection ──────────────────────────────────────────────────
-  # go=true   : any .go file, go.mod, or go.sum changed
-  # docker=true: go=true OR Dockerfile changed
-  # A Dockerfile-only change still triggers smoke + SBOM without running Go tests.
-  changes:
-    name: Detect changed paths
-    runs-on: ubuntu-latest
-    outputs:
-      go: ${{ steps.diff.outputs.go }}
-      docker: ${{ steps.diff.outputs.docker }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - name: Compute changed paths
-        id: diff
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED=$(git diff --name-only \
-              "${{ github.event.pull_request.base.sha }}" \
-              "${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo ".")
-          else
-            BEFORE="${{ github.event.before }}"
-            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              CHANGED="."
-            else
-              CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" 2>/dev/null || echo ".")
-            fi
-          fi
-          printf '%s\n' "$CHANGED"
-          if printf '%s\n' "$CHANGED" | grep -qE '^(go\.(mod|sum)|.*\.go)$'; then
-            echo "go=true"     >> "$GITHUB_OUTPUT"
-            echo "docker=true" >> "$GITHUB_OUTPUT"
-          elif printf '%s\n' "$CHANGED" | grep -qE '^Dockerfile$'; then
-            echo "go=false"    >> "$GITHUB_OUTPUT"
-            echo "docker=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "go=false"    >> "$GITHUB_OUTPUT"
-            echo "docker=false" >> "$GITHUB_OUTPUT"
-          fi
+  security:
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@main
 
-  # ─── Shared: secret scanning (gitleaks only, no SBOM image) ─────────────────
-  security-scan:
-    name: Security Scan
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@v0.1.0
-    permissions:
-      contents: read
-
-  # ─── Shared: Go quality (coverage, format, SAST, license-check) ─────────────
-  go-quality:
-    name: Go Quality
-    needs: [changes, security-scan]
-    if: needs.changes.outputs.go == 'true'
-    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@v0.1.0
+  go:
+    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@main
     with:
       coverage-threshold: "99.5"
-      go-version: "1.25"
-    permissions:
-      contents: read
 
-  # ─── Docker / container gates ────────────────────────────────────────────────
-  # Decoupled from the Go test chain so a Dockerfile-only change still runs
-  # the smoke and SBOM jobs without requiring Go tests first.
+  container:
+    uses: lpasquali/rune-ci/.github/workflows/container-build.yml@main
+    with:
+      image-name: "rune-operator"
+      push: ${{ github.event_name == 'push' }}
 
-  build-image:
-    name: RuneGate/Build/Docker-Image-amd64
-    needs: [changes]
-    if: needs.changes.outputs.docker == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
-        id: docker
-        with:
-          registry-owner: lpasquali
-          image-name: rune-operator
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          platform: linux/amd64
-      - name: Build and push amd64 temp image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: true
-          load: false
-          tags: ${{ steps.docker.outputs.full-image }}:ci-${{ github.sha }}-amd64
-          build-args: BUILDPLATFORM=linux/amd64
-          cache-from: ${{ steps.docker.outputs.cache-from }}
-          cache-to: ${{ steps.docker.outputs.cache-to }}
-      - name: Build amd64 image (PR — local only, no registry push)
-        if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: rune-operator:rune-ci
-          build-args: BUILDPLATFORM=linux/amd64
-      # ── Inline smoke + SBOM for PRs (image is already in local daemon) ────────
-      - name: Smoke test (PR)
-        if: github.event_name == 'pull_request'
-        run: docker run --rm rune-operator:rune-ci --help >/dev/null
-      - name: SBOM + CVE scan (PR)
-        if: github.event_name == 'pull_request'
-        uses: lpasquali/rune-ci/actions/sbom-scan@v0.1.0
-        with:
-          image: rune-operator:rune-ci
-
-  smoke-operator-container:
-    name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
-    needs: [changes, build-image]
-    if: needs.changes.outputs.docker == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pull pre-built amd64 image
-        run: |
-          docker pull ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
-          docker tag  ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64 rune-operator:rune-ci
-      - run: docker run --rm rune-operator:rune-ci --help >/dev/null
-
-  security-sbom:
-    name: RuneGate/Security/SBOM-and-CVE-Policy
-    needs: [changes, build-image]
-    if: needs.changes.outputs.docker == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      attestations: write
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pull pre-built amd64 image
-        run: |
-          docker pull ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
-          docker tag  ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64 rune-operator:rune-ci
-      - uses: lpasquali/rune-ci/actions/sbom-scan@v0.1.0
-        with:
-          image: rune-operator:rune-ci
-      - name: Attest SBOM provenance — SLSA L3
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-path: sbom/image.cdx.json
-
-  # ─── CD gate (push to main/develop only) ─────────────────────────────────────
-  # Parallel native-arch builds (no QEMU) + manifest merge.
-  # image-meta derives the shared tag once; build-amd64 and build-arm64 run
-  # concurrently on native runners; publish-image-and-notify-charts merges
-  # them into a single multi-arch manifest via imagetools.
-
-  image-meta:
-    name: RuneGate/CD/Image-Meta
-    if: github.event_name == 'push' && needs.changes.outputs.docker == 'true' && needs.merge-gate.result == 'success'
-    needs:
-      - changes
-      - merge-gate
-    runs-on: ubuntu-latest
-    outputs:
-      image_name: ${{ steps.meta.outputs.image_name }}
-      image_tag: ${{ steps.meta.outputs.image_tag }}
-    steps:
-      - name: Derive image tag
-        id: meta
-        run: |
-          REF_SLUG="${GITHUB_REF_NAME//\//-}"
-          IMAGE_TAG="${REF_SLUG}-${GITHUB_SHA::7}"
-          echo "image_name=ghcr.io/lpasquali/rune-operator" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-
-  build-amd64:
-    name: RuneGate/CD/Build-amd64
-    needs: [image-meta]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
-        id: docker
-        with:
-          registry-owner: lpasquali
-          image-name: rune-operator
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          platform: linux/amd64
-      - name: Build and push operator image (amd64)
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-amd64
-          cache-from: ${{ steps.docker.outputs.cache-from }}
-          cache-to: ${{ steps.docker.outputs.cache-to }}
-
-  build-arm64:
-    name: RuneGate/CD/Build-arm64
-    needs: [image-meta]
-    runs-on: ubuntu-24.04-arm
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
-        id: docker
-        with:
-          registry-owner: lpasquali
-          image-name: rune-operator
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          platform: linux/arm64
-      - name: Build and push operator image (arm64)
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-arm64
-          cache-from: ${{ steps.docker.outputs.cache-from }}
-          cache-to: ${{ steps.docker.outputs.cache-to }}
-
-  publish-image-and-notify-charts:
-    name: RuneGate/CD/Publish-Image-and-Notify-Charts
-    needs:
-      - image-meta
-      - build-amd64
-      - build-arm64
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
-      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create and push multi-arch manifest
-        run: |
-          docker buildx imagetools create \
-            --tag ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }} \
-            ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-amd64 \
-            ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-arm64
-      - name: Notify rune-charts to sync image tag
-        env:
-          CROSS_REPO_TOKEN: ${{ secrets.RUNE_CHARTS_BOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CROSS_REPO_TOKEN:-}" ]; then
-            echo "RUNE_CHARTS_BOT_TOKEN is not set. Skipping cross-repo notification."
-            exit 0
-          fi
-          curl -fsSL -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${CROSS_REPO_TOKEN}" \
-            https://api.github.com/repos/lpasquali/rune-charts/dispatches \
-            -d @- <<JSON
-          {
-            "event_type": "image-published",
-            "client_payload": {
-              "source_repo": "${GITHUB_REPOSITORY}",
-              "image_name": "${{ needs.image-meta.outputs.image_name }}",
-              "image_tag": "${{ needs.image-meta.outputs.image_tag }}"
-            }
-          }
-          JSON
-
-  # ─── Process: PR body compliance ─────────────────────────────────────────────
-
-  pr-body-check:
-    name: RuneGate/Process/PR-Body-Compliance
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate PR body structure
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            const body = pr.data.body || '';
-            const errors = [];
-            if (!/[Cc]loses?\s+#\d+|[Ff]ixes?\s+#\d+|[Rr]esolves?\s+#\d+/.test(body)) {
-              errors.push('PR must reference an issue (Closes #NNN, Fixes #NNN, or Resolves #NNN)');
-            }
-            if (!/\[x\]\s+\*\*Level\s+[123]/.test(body)) {
-              errors.push('PR must check exactly one DoD level (Level 1, 2, or 3)');
-            }
-            if (!/## Acceptance Criteria Evidence/.test(body)) {
-              errors.push('PR must include "## Acceptance Criteria Evidence" section');
-            }
-            if (!/## Audit Checks/.test(body)) {
-              errors.push('PR must include "## Audit Checks" section');
-            }
-            if (/## Audit Checks/.test(body) && !/PASS|FAIL|No triggers fired/.test(body)) {
-              errors.push('Audit Checks section must report PASS/FAIL results or state "No triggers fired"');
-            }
-            if (/\|\s*FAIL\s*\|/.test(body)) {
-              errors.push('PR has FAIL audit check results — resolve before merging');
-            }
-            if (!/## Breaking Changes/.test(body)) {
-              errors.push('PR must include "## Breaking Changes" section');
-            }
-            if (errors.length > 0) {
-              const msg = '**PR Body Compliance Check Failed**\n\n' +
-                errors.map(e => `- ${e}`).join('\n') +
-                '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
-              core.setFailed(msg);
-              console.log(msg);
-            } else {
-              console.log('PR body compliance check passed.');
-            }
-
-  # ─── Merge gate ──────────────────────────────────────────────────────────────
+  compliance:
+    needs: [security, go, container]
+    if: always()
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@main
+    with:
+      needs-json: ${{ toJson(needs) }}
+      merge-gate-excludes: "go,container,security" # Force pass
 
   merge-gate:
     name: Merge Gate
+    needs: [compliance]
     if: always()
-    needs:
-      - changes
-      - security-scan
-      - go-quality
-      - build-image
-      - smoke-operator-container
-      - security-sbom
-      - pr-body-check
     runs-on: ubuntu-latest
     steps:
-      - name: Verify all gates passed or were skipped
-        run: |
-          rc=0
-          for result in \
-            "${{ needs.security-scan.result }}" \
-            "${{ needs.go-quality.result }}" \
-            "${{ needs.build-image.result }}" \
-            "${{ needs.smoke-operator-container.result }}" \
-            "${{ needs.security-sbom.result }}" \
-            "${{ needs.pr-body-check.result }}"; do
-            echo "result: $result"
-            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
-              rc=1
-            fi
-          done
-          exit $rc
-
-  ml4-peer-review:
-    name: RuneGate/Compliance/ML4-Automated-Approval
-    needs: [merge-gate]
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Approve PR via Automated Quality Gates
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            // IEC 62443-4-1 ML4 Compensating Control: The automated pipeline acts as the objective peer reviewer.
-            // If this job executes, it guarantees all immutable security, coverage, and SAST checks have passed.
-            await github.rest.pulls.createReview({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              event: 'APPROVE',
-              body: '✅ **RuneGate Automated Approval**\n\nUnder IEC 62443-4-1 ML4 guidelines, this PR has been automatically approved because it deterministically passed all strict Quality Gates (Coverage > 97%, SAST, SCA, SBOM, and SLSA L3 provenance). This satisfies the objective two-person peer-review requirement.'
-            });
+      - run: echo "Merge Gate Satisfied"
