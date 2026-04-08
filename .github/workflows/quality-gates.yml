@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Quality Gates (Rune Operator)
 
 on:
@@ -28,7 +29,7 @@ jobs:
       go: ${{ steps.diff.outputs.go }}
       docker: ${{ steps.diff.outputs.docker }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
       - name: Compute changed paths
@@ -59,67 +60,24 @@ jobs:
             echo "docker=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # ─── Go gates ────────────────────────────────────────────────────────────────
+  # ─── Shared: secret scanning (gitleaks only, no SBOM image) ─────────────────
+  security-scan:
+    name: Security Scan
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@v0.1.0
+    permissions:
+      contents: read
 
-  coverage-go:
-    name: RuneGate/Coverage/Go
-    needs: [changes, security-secrets]
+  # ─── Shared: Go quality (coverage, format, SAST, license-check) ─────────────
+  go-quality:
+    name: Go Quality
+    needs: [changes, security-scan]
     if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache: true
-          cache-dependency-path: go.sum
-      - run: |
-          go test ./... -coverprofile=coverage.out -covermode=atomic
-          go tool cover -func=coverage.out | tee coverage-summary.txt
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          summary = Path("coverage-summary.txt").read_text(encoding="utf-8")
-          match = re.search(r"total:\s+\(statements\)\s+([0-9.]+)%", summary)
-          if not match:
-            raise SystemExit("could not parse total coverage")
-          total = float(match.group(1))
-          threshold = 99.5
-          print(f"total coverage: {total:.1f}% (threshold: {threshold:.1f}%)")
-          if total < threshold:
-            raise SystemExit(1)
-          PY
-
-  feature-go:
-    name: RuneGate/Feature/Go
-    needs: [changes, coverage-go]
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache: true
-          cache-dependency-path: go.sum
-      - run: go test ./... -v
-
-  linting-go:
-    name: RuneGate/Linting/Go
-    needs: [changes, security-secrets]
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache: true
-          cache-dependency-path: go.sum
-      - run: |
-          test -z "$(gofmt -l .)"
-          go vet ./...
+    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@v0.1.0
+    with:
+      coverage-threshold: "99.5"
+      go-version: "1.25"
+    permissions:
+      contents: read
 
   # ─── Docker / container gates ────────────────────────────────────────────────
   # Decoupled from the Go test chain so a Dockerfile-only change still runs
@@ -134,30 +92,30 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v3
-        if: github.event_name == 'push'
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
+        id: docker
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry-owner: lpasquali
+          image-name: rune-operator
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          platform: linux/amd64
       - name: Build and push amd64 temp image
         if: github.event_name == 'push'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
           load: false
-          tags: ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
+          tags: ${{ steps.docker.outputs.full-image }}:ci-${{ github.sha }}-amd64
           build-args: BUILDPLATFORM=linux/amd64
-          cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64
-          cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max
+          cache-from: ${{ steps.docker.outputs.cache-from }}
+          cache-to: ${{ steps.docker.outputs.cache-to }}
       - name: Build amd64 image (PR — local only, no registry push)
         if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
           file: ./Dockerfile
@@ -170,66 +128,11 @@ jobs:
       - name: Smoke test (PR)
         if: github.event_name == 'pull_request'
         run: docker run --rm rune-operator:rune-ci --help >/dev/null
-      - name: Generate SBOM — CycloneDX via Syft (PR)
+      - name: SBOM + CVE scan (PR)
         if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          mkdir -p sbom
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${PWD}:/work" anchore/syft:v1.17.0 rune-operator:rune-ci -o cyclonedx-json=/work/sbom/operator-image.cdx.json
-      - name: Scan SBOM — Grype (PR)
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json=/work/sbom/operator-grype.json || true
-      - name: Scan SBOM — Trivy (PR)
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/operator-image.cdx.json --format json --output /work/sbom/operator-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL || true
-      - name: Enforce CVE policy (PR)
-        if: github.event_name == 'pull_request'
-        run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          BLOCK_THRESHOLD = 7.0
-          WARN_THRESHOLD  = 7.0
-          findings = []
-          for f in sorted(Path('sbom').glob('*.json')):
-              if not f.exists():
-                  continue
-              data = json.loads(f.read_text(encoding='utf-8'))
-              if 'matches' in data:
-                  for m in data.get('matches', []):
-                      vuln = m.get('vulnerability', {})
-                      score = 0.0
-                      for c in vuln.get('cvss', []) or []:
-                          score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
-                      if score > 0:
-                          fixable = vuln.get('fix', {}).get('state', '') == 'fixed'
-                          findings.append((vuln.get('id', 'UNKNOWN'), score, 'grype', fixable))
-              elif 'Results' in data:
-                  for r in data.get('Results', []) or []:
-                      for v in r.get('Vulnerabilities', []) or []:
-                          score = 0.0
-                          for vendor in ('nvd', 'redhat', 'ghsa'):
-                              score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
-                          if score > 0:
-                              fixable = bool(v.get('FixedVersion', ''))
-                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, 'trivy', fixable))
-          blocked = [x for x in findings if x[1] >= BLOCK_THRESHOLD and x[3]]
-          warned  = [x for x in findings if x[1] >= WARN_THRESHOLD and not x[3]]
-          if blocked:
-              print(f"CVE policy violation: {len(blocked)} fixable HIGH+CRITICAL (CVSS >= {BLOCK_THRESHOLD})")
-              for cve, score, src, _ in blocked[:5]:
-                  print(f"  - {cve} [{src}]: {score}")
-              raise SystemExit(1)
-          if warned:
-              print(f"CVE warning: {len(warned)} unfixable HIGH+CRITICAL — VEX entry required")
-              for cve, score, src, _ in warned[:5]:
-                  print(f"  - {cve} [{src}]: {score}")
-          print(f"✓ CVE policy passed: {len(findings)} total, {len(blocked)} blocked, {len(warned)} warned")
-          PY
+        uses: lpasquali/rune-ci/actions/sbom-scan@v0.1.0
+        with:
+          image: rune-operator:rune-ci
 
   smoke-operator-container:
     name: RuneGate/CLI-and-API-Smoke/Go-Operator-Container
@@ -240,7 +143,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -262,8 +165,8 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -272,190 +175,16 @@ jobs:
         run: |
           docker pull ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64
           docker tag  ghcr.io/lpasquali/rune-operator:ci-${{ github.sha }}-amd64 rune-operator:rune-ci
-      - name: Generate SBOM — CycloneDX via Syft
-        run: |
-          set -euo pipefail
-          mkdir -p sbom
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${PWD}:/work" anchore/syft:v1.17.0 rune-operator:rune-ci -o cyclonedx-json=/work/sbom/operator-image.cdx.json
-      - name: Scan SBOM — Grype
-        run: |
-          set -euo pipefail
-          docker run --rm -v "${PWD}:/work" anchore/grype:v0.82.0 sbom:/work/sbom/operator-image.cdx.json -o json=/work/sbom/operator-grype.json || true
-      - name: Scan SBOM — Trivy
-        run: |
-          set -euo pipefail
-          docker run --rm -v "${PWD}:/work" aquasec/trivy:0.65.0 sbom /work/sbom/operator-image.cdx.json --format json --output /work/sbom/operator-trivy.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL || true
-      - name: Enforce CVE policy
-        run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          BLOCK_THRESHOLD = 7.0   # fixable HIGH+CRITICAL → hard block (IEC 62443 4-1 ML4 DM-4)
-          WARN_THRESHOLD  = 7.0   # unfixable HIGH+CRITICAL → VEX register required
-          findings = []
-          for f in sorted(Path('sbom').glob('*.json')):
-              if not f.exists():
-                  continue
-              data = json.loads(f.read_text(encoding='utf-8'))
-              if 'matches' in data:
-                  for m in data.get('matches', []):
-                      vuln = m.get('vulnerability', {})
-                      score = 0.0
-                      for c in vuln.get('cvss', []) or []:
-                          score = max(score, float((c.get('metrics') or {}).get('baseScore') or 0.0))
-                      if score > 0:  # Only report vulnerabilities with scores
-                          fixable = vuln.get('fix', {}).get('state', '') == 'fixed'
-                          findings.append((vuln.get('id', 'UNKNOWN'), score, 'grype', fixable))
-              elif 'Results' in data:
-                  for r in data.get('Results', []) or []:
-                      for v in r.get('Vulnerabilities', []) or []:
-                          score = 0.0
-                          for vendor in ('nvd', 'redhat', 'ghsa'):
-                              score = max(score, float((((v.get('CVSS') or {}).get(vendor) or {}).get('V3Score')) or 0.0))
-                          if score > 0:  # Only report vulnerabilities with scores
-                              fixable = bool(v.get('FixedVersion', ''))
-                              findings.append((v.get('VulnerabilityID', 'UNKNOWN'), score, 'trivy', fixable))
-
-          blocked = [x for x in findings if x[1] >= BLOCK_THRESHOLD and x[3]]
-          warned  = [x for x in findings if x[1] >= WARN_THRESHOLD and not x[3]]
-          if blocked:
-              print(f"CVE policy violation: {len(blocked)} fixable HIGH+CRITICAL vulnerabilities found (CVSS >= {BLOCK_THRESHOLD})")
-              for cve, score, src, _ in blocked[:5]:
-                  print(f"  - {cve} [{src}]: {score}")
-              raise SystemExit(1)
-          if warned:
-              print(f"CVE warning: {len(warned)} unfixable HIGH+CRITICAL vulnerabilities require VEX register entry (CVSS >= {WARN_THRESHOLD})")
-              for cve, score, src, _ in warned[:5]:
-                  print(f"  - {cve} [{src}]: {score}")
-          print(f"✓ CVE policy passed: {len(findings)} vulnerabilities total, {len(blocked)} fixable blocked, {len(warned)} unfixable warned")
-          PY
+      - uses: lpasquali/rune-ci/actions/sbom-scan@v0.1.0
+        with:
+          image: rune-operator:rune-ci
       - name: Attest SBOM provenance — SLSA L3
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: sbom/operator-image.cdx.json
-
-  security-sast:
-    name: RuneGate/Security/SAST
-    needs: [changes]
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache: true
-          cache-dependency-path: go.sum
-      - name: Run GoSec security scanner
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
-          set +e
-          gosec -fmt json -out gosec-results.json -severity high ./...
-          GOSEC_EXIT=$?
-          set -e
-          if [ $GOSEC_EXIT -ne 0 ] && [ $GOSEC_EXIT -ne 1 ]; then
-            echo "GoSec failed with unexpected exit code: $GOSEC_EXIT"
-            exit $GOSEC_EXIT
-          fi
-          if [ -f gosec-results.json ]; then
-            ISSUES=$(jq '.Issues | length' gosec-results.json)
-            if [ "$ISSUES" -gt 0 ]; then
-              echo "⚠ GoSec found $ISSUES security issues:"
-              jq '.Issues[] | "  - \(.rule_id): \(.details) (severity: \(.severity))"' -r gosec-results.json
-              echo "❌ Failing job because GoSec reported high-severity issues."
-              exit 1
-            fi
-          fi
-
-  security-secrets:
-    name: RuneGate/Security/SecretScanning
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: gitleaks — hardcoded credential detection (IEC 62443 4-1 ML4 SM-8)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  security-licenses:
-    name: RuneGate/Security/LicenseCompliance
-    needs: [changes]
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache: true
-          cache-dependency-path: go.sum
-      - name: go-licenses — dependency license audit (IEC 62443 4-1 ML4 SM-2)
-        run: |
-          go install github.com/google/go-licenses@v1.6.0
-          go-licenses report ./... > licenses-go.txt
-          python3 - <<'PY'
-          import csv
-          from pathlib import Path
-
-          # Tokens that identify disallowed licenses (case-insensitive).
-          disallowed_tokens = (
-              'agpl',
-              'gplv3',
-              'gpl v3',
-              'gnu general public license v3',
-              'gnu affero general public license',
-              'gplv2',
-              'gpl v2',
-              'gpl-2.0-only',
-              'gpl-2.0-or-later',
-              'gpl-2.0',
-              'gnu general public license v2',
-          )
-          # Temporary exceptions — keep minimal and document the constraint.
-          # All entries MUST be lowercase; comparison uses pkg.lower().
-          _raw_exceptions: set[str] = set()
-          allowed_package_exceptions = {e.lower() for e in _raw_exceptions}
-
-          # go-licenses report emits CSV: package,license_url,license_type
-          text = Path('licenses-go.txt').read_text(encoding='utf-8')
-          reader = csv.reader(text.splitlines())
-          rows = list(reader)
-          blocked = []
-          allowed_hits = []
-          for parts in rows:
-              if len(parts) < 3:
-                  continue
-              pkg, license_name = parts[0].strip(), parts[2].strip()
-              lic_lower = license_name.lower()
-              if any(token in lic_lower for token in disallowed_tokens):
-                  entry = (pkg, license_name)
-                  if pkg.lower() in allowed_package_exceptions:
-                      allowed_hits.append(entry)
-                  else:
-                      blocked.append(entry)
-
-          print(f'license rows: {len(rows)}')
-          print(f'blocked licenses: {len(blocked)}')
-          print(f'allowed exception hits: {len(allowed_hits)}')
-          for name, license_name in allowed_hits[:30]:
-              print(f'ALLOW-EXCEPTION: {name} -> {license_name}')
-          for name, license_name in blocked[:30]:
-              print(f'BLOCK: {name} -> {license_name}')
-
-          if blocked:
-              raise SystemExit(1)
-          PY
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: license-reports
-          path: licenses-go.txt
-          retention-days: 14
+          subject-path: sbom/image.cdx.json
 
   # ─── CD gate (push to main/develop only) ─────────────────────────────────────
-  # Parallel native-arch builds (no QEMU) + manifest merge, mirroring rune.
+  # Parallel native-arch builds (no QEMU) + manifest merge.
   # image-meta derives the shared tag once; build-amd64 and build-arm64 run
   # concurrently on native runners; publish-image-and-notify-charts merges
   # them into a single multi-arch manifest via imagetools.
@@ -481,57 +210,57 @@ jobs:
 
   build-amd64:
     name: RuneGate/CD/Build-amd64
-    needs:
-      - image-meta
+    needs: [image-meta]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
+        id: docker
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry-owner: lpasquali
+          image-name: rune-operator
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          platform: linux/amd64
       - name: Build and push operator image (amd64)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-amd64
-          cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64
-          cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-amd64,mode=max
+          cache-from: ${{ steps.docker.outputs.cache-from }}
+          cache-to: ${{ steps.docker.outputs.cache-to }}
 
   build-arm64:
     name: RuneGate/CD/Build-arm64
-    needs:
-      - image-meta
+    needs: [image-meta]
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: lpasquali/rune-ci/actions/docker-setup@v0.1.0
+        id: docker
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry-owner: lpasquali
+          image-name: rune-operator
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          platform: linux/arm64
       - name: Build and push operator image (arm64)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/arm64
           push: true
           tags: ${{ needs.image-meta.outputs.image_name }}:${{ needs.image-meta.outputs.image_tag }}-arm64
-          cache-from: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-arm64
-          cache-to: type=registry,ref=ghcr.io/lpasquali/rune-operator:buildcache-arm64,mode=max
+          cache-from: ${{ steps.docker.outputs.cache-from }}
+          cache-to: ${{ steps.docker.outputs.cache-to }}
 
   publish-image-and-notify-charts:
     name: RuneGate/CD/Publish-Image-and-Notify-Charts
@@ -544,8 +273,8 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -588,7 +317,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR body structure
-        uses: actions/github-script@v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -621,7 +350,7 @@ jobs:
             }
             if (errors.length > 0) {
               const msg = '**PR Body Compliance Check Failed**\n\n' +
-                errors.map(e => `- ❌ ${e}`).join('\n') +
+                errors.map(e => `- ${e}`).join('\n') +
                 '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
               core.setFailed(msg);
               console.log(msg);
@@ -636,15 +365,11 @@ jobs:
     if: always()
     needs:
       - changes
-      - coverage-go
-      - feature-go
-      - linting-go
+      - security-scan
+      - go-quality
       - build-image
       - smoke-operator-container
       - security-sbom
-      - security-sast
-      - security-secrets
-      - security-licenses
       - pr-body-check
     runs-on: ubuntu-latest
     steps:
@@ -652,15 +377,11 @@ jobs:
         run: |
           rc=0
           for result in \
-            "${{ needs.coverage-go.result }}" \
-            "${{ needs.feature-go.result }}" \
-            "${{ needs.linting-go.result }}" \
+            "${{ needs.security-scan.result }}" \
+            "${{ needs.go-quality.result }}" \
             "${{ needs.build-image.result }}" \
             "${{ needs.smoke-operator-container.result }}" \
             "${{ needs.security-sbom.result }}" \
-            "${{ needs.security-sast.result }}" \
-            "${{ needs.security-secrets.result }}" \
-            "${{ needs.security-licenses.result }}" \
             "${{ needs.pr-body-check.result }}"; do
             echo "result: $result"
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
@@ -668,7 +389,6 @@ jobs:
             fi
           done
           exit $rc
-
 
   ml4-peer-review:
     name: RuneGate/Compliance/ML4-Automated-Approval
@@ -679,7 +399,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Approve PR via Automated Quality Gates
-        uses: actions/github-script@v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             // IEC 62443-4-1 ML4 Compensating Control: The automated pipeline acts as the objective peer reviewer.
