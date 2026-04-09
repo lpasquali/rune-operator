@@ -23,3 +23,5 @@ __pycache__/
 *.log
 *_log.txt
 *_logs.txt
+# Claude Code per-project agent state
+.claude/
