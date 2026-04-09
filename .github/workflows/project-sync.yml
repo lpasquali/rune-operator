@@ -5,10 +5,13 @@ on:
   issues:
     types: [opened, closed, reopened, labeled, unlabeled, assigned, unassigned]
   pull_request:
-    types: [opened, closed, reopened, ready_for_review, converted_to_draft, labeled, unlabeled, synchronized]
+    types: [opened, closed, reopened, ready_for_review, converted_to_draft, labeled, unlabeled, synchronize]
+
+permissions:
+  contents: read
 
 jobs:
   sync:
-    uses: lpasquali/rune-ci/.github/workflows/project-sync-logic.yml@063ed73b40bf986310a32ee32dc8e21e0a39aa55 # main
+    uses: lpasquali/rune-ci/.github/workflows/project-sync-logic.yml@main
     secrets:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
