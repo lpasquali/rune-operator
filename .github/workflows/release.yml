@@ -6,13 +6,17 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
 jobs:
   release:
-    uses: lpasquali/rune-ci/.github/workflows/release.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/release.yml@main
     with:
-      image-name: rune-operator
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
+      image-name: "rune-operator"
+      notify-charts: true
+    secrets:
+      RUNE_CHARTS_BOT_TOKEN: ${{ secrets.RUNE_CHARTS_BOT_TOKEN }}
