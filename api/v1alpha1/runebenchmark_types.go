@@ -2,6 +2,7 @@
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -45,6 +46,9 @@ type RuneBenchmarkSpec struct {
 	// CostEstimation configures the pre-flight cost safety gate.
 	CostEstimation CostEstimation `json:"costEstimation,omitempty"`
 
+	// Budget optionally caps projected run cost using GET /v1/finops/simulate before the job is submitted.
+	Budget Budget `json:"budget,omitempty"`
+
 	// Agent to run for agentic-agent workflow (e.g. holmes, k8sgpt)
 	Agent string `json:"agent,omitempty"`
 	// When true, demands SLSA L3 signed provenance before execution
@@ -67,6 +71,14 @@ type CostEstimation struct {
 	LocalEnergyRateKWH         float64 `json:"localEnergyRateKwh,omitempty"`
 	LocalHardwarePurchasePrice float64 `json:"localHardwarePurchasePrice,omitempty"`
 	LocalHardwareLifespanYears float64 `json:"localHardwareLifespanYears,omitempty"`
+}
+
+// Budget caps projected run cost using the RUNE finops simulator before job submission.
+type Budget struct {
+	// Maximum allowed cost in USD for this execution (compared to cost_high_usd from GET /v1/finops/simulate
+	// when present, otherwise projected_cost_usd).
+	// +kubebuilder:validation:Minimum=0
+	MaxCostUSD *resource.Quantity `json:"maxCostUSD,omitempty"`
 }
 
 type RunRecord struct {

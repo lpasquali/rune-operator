@@ -16,6 +16,9 @@ spec:
   schedule: "*/15 * * * *"
   timeoutSeconds: 180
   backoffSeconds: 60
+  # Optional: block runs when GET /v1/finops/simulate projected_cost_usd exceeds this cap.
+  budget:
+    maxCostUSD: "10"
   suspend: false
   agent: "holmes"
   attestationRequired: false

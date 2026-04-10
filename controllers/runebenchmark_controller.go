@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -123,8 +125,12 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil {
 		obj.Status.ConsecutiveFailures++
-		obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionFalse, "RunFailed", err.Error(), obj.Generation))
-		r.Recorder.Eventf(obj, "Warning", "RunFailed", "workflow run failed: %v", err)
+		failReason := "RunFailed"
+		if errors.Is(err, ErrBudgetExceeded) {
+			failReason = "BudgetExceeded"
+		}
+		obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionFalse, failReason, err.Error(), obj.Generation))
+		r.Recorder.Eventf(obj, "Warning", failReason, "workflow run failed: %v", err)
 		logger.Error(err, "run failed")
 		metrics.ReconcileTotal.WithLabelValues("error").Inc()
 		if statusErr := r.Status().Update(ctx, obj); statusErr != nil {
@@ -354,6 +360,96 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 	return nil
 }
 
+// ErrBudgetExceeded is returned when the finops estimate (cost_high_usd when present, else projected_cost_usd) exceeds spec.budget.maxCostUSD.
+var ErrBudgetExceeded = errors.New("budget exceeded")
+
+// finopsSimulateResponse is the JSON body from GET /v1/finops/simulate (see rune/rune_bench/metrics/pricing.py).
+type finopsSimulateResponse struct {
+	ProjectedCostUSD float64  `json:"projected_cost_usd"`
+	CostHighUSD      *float64 `json:"cost_high_usd,omitempty"`
+}
+
+// effectiveBudgetUSD returns the USD amount to compare against maxCostUSD: prefer cost_high_usd
+// (stricter upper bound) when present, else projected_cost_usd.
+func effectiveBudgetUSD(p finopsSimulateResponse) (value float64, basis string) {
+	if p.CostHighUSD != nil {
+		return *p.CostHighUSD, "cost_high_usd"
+	}
+	return p.ProjectedCostUSD, "projected_cost_usd"
+}
+
+func finopsSimulateQuery(spec benchv1alpha1.RuneBenchmarkSpec) url.Values {
+	v := url.Values{}
+	if spec.Model != "" {
+		v.Set("model", spec.Model)
+	}
+	switch spec.Workflow {
+	case "agentic-agent":
+		if spec.Agent != "" {
+			v.Set("agent", spec.Agent)
+		}
+	case "benchmark":
+		if spec.TemplateHash != "" {
+			v.Set("suite", spec.TemplateHash)
+		}
+	}
+	return v
+}
+
+// checkBudget calls GET /v1/finops/simulate and blocks the run when the effective estimate
+// (cost_high_usd when present, otherwise projected_cost_usd) exceeds spec.budget.maxCostUSD.
+func checkBudget(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
+	if spec.Budget.MaxCostUSD == nil {
+		return nil
+	}
+	maxVal := spec.Budget.MaxCostUSD.AsApproximateFloat64()
+	if maxVal < 0 {
+		return fmt.Errorf("budget check: maxCostUSD must be >= 0")
+	}
+
+	raw := strings.TrimRight(apiBase, "/") + "/v1/finops/simulate"
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("budget check: invalid API base: %w", err)
+	}
+	u.RawQuery = finopsSimulateQuery(spec).Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("budget check: failed to build request: %w", err)
+	}
+	if spec.Tenant != "" {
+		req.Header.Set("X-Tenant-ID", spec.Tenant)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("budget check: HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("budget check: failed to read response: %w", err)
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("budget check: API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var parsed finopsSimulateResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return fmt.Errorf("budget check: failed to parse response: %w", err)
+	}
+	effective, basis := effectiveBudgetUSD(parsed)
+	if effective > maxVal {
+		return fmt.Errorf("%w: %s %.4f USD exceeds max %.4f USD", ErrBudgetExceeded, basis, effective, maxVal)
+	}
+	return nil
+}
+
 func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *benchv1alpha1.RuneBenchmark, timeout time.Duration) (benchv1alpha1.RunRecord, error) {
 	record := benchv1alpha1.RunRecord{SubmittedAt: metav1.Now(), Status: "submitted"}
 
@@ -400,6 +496,9 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	}
 
 	if err := checkCostEstimate(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
+		return record, err
+	}
+	if err := checkBudget(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
 		return record, err
 	}
 
