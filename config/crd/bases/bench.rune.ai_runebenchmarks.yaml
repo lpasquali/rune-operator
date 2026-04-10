@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: runebenchmarks.
+  name: runebenchmarks.bench.rune.ai
 spec:
-  group: ""
+  group: bench.rune.ai
   names:
     kind: RuneBenchmark
     listKind: RuneBenchmarkList
@@ -29,7 +29,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: ""
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         properties:
