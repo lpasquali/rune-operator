@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Trigger manually from the Actions tab, or let it run on a schedule.
+# Requires a fine-grained PAT (or classic PAT with `project` scope) stored
+# in the repo secret PROJECT_TOKEN.
+name: Project Board Backfill
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    uses: lpasquali/rune-ci/.github/workflows/project-backfill-logic.yml@main
+    secrets:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
