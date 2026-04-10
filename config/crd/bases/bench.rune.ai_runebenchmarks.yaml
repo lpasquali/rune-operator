@@ -79,6 +79,20 @@ spec:
               backoffSeconds:
                 format: int32
                 type: integer
+              budget:
+                description: Budget optionally caps projected run cost using GET /v1/finops/simulate
+                  before the job is submitted.
+                properties:
+                  maxCostUSD:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Maximum allowed cost in USD for this execution (compared
+                      to cost_high_usd from GET /v1/finops/simulate when present, otherwise
+                      projected_cost_usd).
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([eE])([+-]?[0-9]+))?$
+                    x-kubernetes-int-or-string: true
+                type: object
               costEstimation:
                 description: CostEstimation configures the pre-flight cost safety
                   gate.

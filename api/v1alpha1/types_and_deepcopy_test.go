@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -63,6 +64,17 @@ func TestAddToSchemeAndDeepCopy(t *testing.T) {
 	}
 	if list.DeepCopyObject() == nil {
 		t.Fatalf("expected list DeepCopyObject result")
+	}
+
+	q := resource.MustParse("5")
+	rb2 := &RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb2", Namespace: "ns"},
+		Spec:       RuneBenchmarkSpec{Workflow: "benchmark", APIBaseURL: "http://x", Budget: Budget{MaxCostUSD: &q}},
+	}
+	cp2 := rb2.DeepCopy()
+	*cp2.Spec.Budget.MaxCostUSD = resource.MustParse("9")
+	if rb2.Spec.Budget.MaxCostUSD.AsApproximateFloat64() == 9 {
+		t.Fatalf("deepcopy should not alias budget.maxCostUSD")
 	}
 
 	statusCopy := &RuneBenchmarkStatus{}

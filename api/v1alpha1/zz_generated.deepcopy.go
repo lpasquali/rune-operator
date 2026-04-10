@@ -4,6 +4,7 @@
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -12,8 +13,22 @@ func (in *RuneBenchmark) DeepCopyInto(out *RuneBenchmark) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.Spec = in.Spec
+	in.Spec.DeepCopyInto(&out.Spec)
 	in.Status.DeepCopyInto(&out.Status)
+}
+
+func (in *RuneBenchmarkSpec) DeepCopyInto(out *RuneBenchmarkSpec) {
+	*out = *in
+	in.Budget.DeepCopyInto(&out.Budget)
+}
+
+func (in *Budget) DeepCopyInto(out *Budget) {
+	*out = *in
+	if in.MaxCostUSD != nil {
+		inQ, outQ := &in.MaxCostUSD, &out.MaxCostUSD
+		*outQ = new(resource.Quantity)
+		**outQ = **inQ
+	}
 }
 
 func (in *RuneBenchmark) DeepCopy() *RuneBenchmark {

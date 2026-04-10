@@ -14,6 +14,7 @@ import (
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -222,6 +223,53 @@ func TestReconcileSuccessAndStatusUpdate(t *testing.T) {
 	}
 	if len(updated.Status.Conditions) == 0 || updated.Status.Conditions[0].Status != metav1.ConditionTrue {
 		t.Fatalf("expected ready=true condition, got %+v", updated.Status.Conditions)
+	}
+}
+
+func TestReconcileBudgetExceededCondition(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/finops/simulate") {
+			_, _ = w.Write([]byte(`{"projected_cost_usd": 50.0, "cost_high_usd": 100.0}`))
+			return
+		}
+		if r.Method == http.MethodPost {
+			t.Fatal("job POST should not run after budget failure")
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("1")
+	obj := &benchv1alpha1.RuneBenchmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
+		Spec: benchv1alpha1.RuneBenchmarkSpec{
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Model:      "m",
+			Budget:     benchv1alpha1.Budget{MaxCostUSD: &qty},
+		},
+	}
+	r, _ := buildReconciler(t, obj)
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
+	if err != nil {
+		t.Fatalf("expected reconcile to swallow error, got %v", err)
+	}
+	updated := &benchv1alpha1.RuneBenchmark{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if updated.Status.LastRun.Status != "failed" {
+		t.Fatalf("expected failed last run, got %+v", updated.Status.LastRun)
+	}
+	found := false
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" && c.Reason == "BudgetExceeded" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected BudgetExceeded condition, got %+v", updated.Status.Conditions)
 	}
 }
 
@@ -1631,5 +1679,219 @@ func TestCheckCostEstimateExactThreshold(t *testing.T) {
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
 	if err != nil {
 		t.Fatalf("expected 0.95 to pass threshold, got %v", err)
+	}
+}
+
+func TestCheckBudgetSkipsWhenNilMax(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{}}
+	if err := checkBudget(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestCheckBudgetAllowsUnderCap(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/finops/simulate" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 1.5, "cost_high_usd": 2.0, "currency":"USD"}`))
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "benchmark",
+		Model:    "llama",
+		Budget:   benchv1alpha1.Budget{MaxCostUSD: &qty},
+	}
+	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+}
+
+func TestCheckBudgetExactCapPasses(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 10.0, "cost_high_usd": 10.0}`))
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
+	}
+	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success at exact cap, got %v", err)
+	}
+}
+
+func TestCheckBudgetBlocksOverCap(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 50.0, "cost_high_usd": 99.0}`))
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
+	}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("expected ErrBudgetExceeded, got %v", err)
+	}
+}
+
+func TestCheckBudgetPrefersCostHighOverProjected(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Mid estimate under cap, but upper bound over cap — must block.
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 1.0, "cost_high_usd": 50.0}`))
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
+	}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("expected ErrBudgetExceeded from cost_high_usd, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "cost_high_usd") {
+		t.Fatalf("expected error to name cost_high_usd, got %v", err)
+	}
+}
+
+func TestCheckBudgetFallbackToProjectedWhenCostHighMissing(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 99.0}`))
+	}))
+	defer ts.Close()
+
+	qty := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
+	}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("expected ErrBudgetExceeded from projected_cost_usd fallback, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "projected_cost_usd") {
+		t.Fatalf("expected error to name projected_cost_usd, got %v", err)
+	}
+}
+
+func TestCheckBudgetNegativeMax(t *testing.T) {
+	q, err := resource.ParseQuantity("-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err = checkBudget(context.Background(), "http://unused", spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "maxCostUSD must be >= 0") {
+		t.Fatalf("expected negative max error, got %v", err)
+	}
+}
+
+func TestCheckBudgetBadAPIBaseURL(t *testing.T) {
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err := checkBudget(context.Background(), "://bad", spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "invalid API base") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestCheckBudgetTransportError(t *testing.T) {
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err := checkBudget(context.Background(), "http://127.0.0.1:1", spec, &http.Client{Timeout: 100 * time.Millisecond}, "")
+	if err == nil || !strings.Contains(err.Error(), "HTTP request failed") {
+		t.Fatalf("expected transport error, got %v", err)
+	}
+}
+
+func TestCheckBudgetAPIErrorStatus(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "API returned 500") {
+		t.Fatalf("expected API error, got %v", err)
+	}
+}
+
+func TestCheckBudgetInvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{`))
+	}))
+	defer ts.Close()
+
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "failed to parse response") {
+		t.Fatalf("expected JSON error, got %v", err)
+	}
+}
+
+func TestCheckBudgetBodyReadError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, _ := hj.Hijack()
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	defer ts.Close()
+
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
+	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
+	if err == nil || !strings.Contains(err.Error(), "read response") {
+		t.Fatalf("expected read error, got %v", err)
+	}
+}
+
+func TestCheckBudgetSendsTenantAndAuth(t *testing.T) {
+	var gotTenant, gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = r.Header.Get("X-Tenant-ID")
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"projected_cost_usd": 0.1}`))
+	}))
+	defer ts.Close()
+
+	q := resource.MustParse("10")
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Tenant: "tenant-z",
+		Budget: benchv1alpha1.Budget{MaxCostUSD: &q},
+	}
+	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "tok"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotTenant != "tenant-z" || gotAuth != "Bearer tok" {
+		t.Fatalf("tenant=%q auth=%q", gotTenant, gotAuth)
+	}
+}
+
+func TestFinopsSimulateQuery(t *testing.T) {
+	v := finopsSimulateQuery(benchv1alpha1.RuneBenchmarkSpec{
+		Workflow:     "benchmark",
+		Model:        "m1",
+		TemplateHash: "tpl",
+	})
+	if v.Get("suite") != "tpl" || v.Get("model") != "m1" {
+		t.Fatalf("unexpected query: %v", v)
+	}
+	v2 := finopsSimulateQuery(benchv1alpha1.RuneBenchmarkSpec{Workflow: "agentic-agent", Agent: "holmes", Model: "m2"})
+	if v2.Get("agent") != "holmes" || v2.Get("model") != "m2" {
+		t.Fatalf("expected agent and model, got %v", v2)
 	}
 }
