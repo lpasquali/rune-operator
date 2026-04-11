@@ -11,8 +11,8 @@ import (
 	"time"
 
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestExecuteBenchmarkExtra(t *testing.T) {
@@ -90,7 +90,7 @@ func TestExecuteBenchmarkExtra(t *testing.T) {
 
 	// Case 5: executeBenchmark ReadAll failure
 	serverFaulty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Can't easily force ReadAll error from httptest server side 
+		// Can't easily force ReadAll error from httptest server side
 		// without closing connection prematurely or something.
 		// Actually, I can just use a custom client in the obj.Spec if I had one.
 		// But executeBenchmark creates its own client.
@@ -121,7 +121,7 @@ func TestCheckBudgetRequestError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil when no budget, got %v", err)
 	}
-	
+
 	maxCost := resource.MustParse("1")
 	spec.Budget.MaxCostUSD = &maxCost
 	// Invalid URL: control characters
