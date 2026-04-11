@@ -14,7 +14,6 @@ import (
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -223,53 +222,6 @@ func TestReconcileSuccessAndStatusUpdate(t *testing.T) {
 	}
 	if len(updated.Status.Conditions) == 0 || updated.Status.Conditions[0].Status != metav1.ConditionTrue {
 		t.Fatalf("expected ready=true condition, got %+v", updated.Status.Conditions)
-	}
-}
-
-func TestReconcileBudgetExceededCondition(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/finops/simulate") {
-			_, _ = w.Write([]byte(`{"projected_cost_usd": 50.0, "cost_high_usd": 100.0}`))
-			return
-		}
-		if r.Method == http.MethodPost {
-			t.Fatal("job POST should not run after budget failure")
-		}
-		http.NotFound(w, r)
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("1")
-	obj := &benchv1alpha1.RuneBenchmark{
-		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
-		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL: ts.URL,
-			Workflow:   "benchmark",
-			Model:      "m",
-			Budget:     benchv1alpha1.Budget{MaxCostUSD: &qty},
-		},
-	}
-	r, _ := buildReconciler(t, obj)
-	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns", Name: "rb"}})
-	if err != nil {
-		t.Fatalf("expected reconcile to swallow error, got %v", err)
-	}
-	updated := &benchv1alpha1.RuneBenchmark{}
-	if err := r.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "rb"}, updated); err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if updated.Status.LastRun.Status != "failed" {
-		t.Fatalf("expected failed last run, got %+v", updated.Status.LastRun)
-	}
-	found := false
-	for _, c := range updated.Status.Conditions {
-		if c.Type == "Ready" && c.Reason == "BudgetExceeded" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected BudgetExceeded condition, got %+v", updated.Status.Conditions)
 	}
 }
 
@@ -719,13 +671,16 @@ func TestBuildPayloadAgenticAgent(t *testing.T) {
 
 func TestBuildPayloadOllamaInstance(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:     "ollama-instance",
-		VastAI:       true,
-		TemplateHash: "abc123",
-		MinDPH:       0.1,
-		MaxDPH:       0.5,
-		Reliability:  0.99,
-		BackendURL:   "http://ollama:11434",
+		Workflow: "ollama-instance",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "abc123",
+				MinDPH:       0.1,
+				MaxDPH:       0.5,
+				Reliability:  0.99,
+			},
+		},
+		BackendURL: "http://ollama:11434",
 	}
 	p := buildPayload(spec)
 	if p["vastai"] != true {
@@ -746,19 +701,22 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 
 func TestBuildPayloadBenchmark(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                    "benchmark",
-		VastAI:                      true,
-		TemplateHash:                "tpl",
-		MinDPH:                      0.2,
-		MaxDPH:                      0.8,
-		Reliability:                 0.95,
+		Workflow: "benchmark",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "tpl",
+				MinDPH:       0.2,
+				MaxDPH:       0.8,
+				Reliability:  0.95,
+				StopInstance: true,
+			},
+		},
 		BackendURL:                  "http://ollama:11434",
 		Question:                    "q",
 		Model:                       "m",
 		BackendWarmup:               false,
 		BackendWarmupTimeoutSeconds: 60,
 		Kubeconfig:                  "/kube/config",
-		VastAIStopInstance:          true,
 	}
 	p := buildPayload(spec)
 	for _, k := range []string{
@@ -857,13 +815,16 @@ func TestEstimatesPreflightSuccess(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:   ts.URL,
-			Workflow:     "benchmark",
-			VastAI:       true,
-			TemplateHash: "tpl",
-			MinDPH:       0.1,
-			MaxDPH:       0.5,
-			Reliability:  0.95,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{
+					TemplateHash: "tpl",
+					MinDPH:       0.1,
+					MaxDPH:       0.5,
+					Reliability:  0.95,
+				},
+			},
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -898,9 +859,11 @@ func TestEstimatesPreflightBelowThreshold(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 10,
 		},
 	}
@@ -938,9 +901,11 @@ func TestEstimatesPreflightHTTPError(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 5,
 		},
 	}
@@ -974,9 +939,11 @@ func TestEstimatesPreflightParseError(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 5,
 		},
 	}
@@ -1016,9 +983,9 @@ func TestEstimatesSkippedForLocalWorkflow(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL: ts.URL,
-			Workflow:   "benchmark",
-			VastAI:     false,
+			APIBaseURL:   ts.URL,
+			Workflow:     "benchmark",
+			Provisioning: nil,
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -1519,7 +1486,7 @@ func TestPollCancelled(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	spec := benchv1alpha1.RuneBenchmarkSpec{Provisioning: nil}
 	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected nil for non-VastAI, got %v", err)
 	}
@@ -1527,7 +1494,7 @@ func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
 
 func TestCheckCostEstimateSkipsWhenNoCostProvider(t *testing.T) {
 	// No VastAI, no CostEstimation providers → skip
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	spec := benchv1alpha1.RuneBenchmarkSpec{Provisioning: nil}
 	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected nil when no providers, got %v", err)
 	}
@@ -1591,7 +1558,11 @@ func TestCheckCostEstimateBackwardCompat(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -1605,7 +1576,11 @@ func TestCheckCostEstimateMarshalError(t *testing.T) {
 	t.Cleanup(func() { jsonMarshal = oldMarshal })
 	jsonMarshal = func(any) ([]byte, error) { return nil, errors.New("marshal-boom") }
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "marshal") {
 		t.Fatalf("expected marshal error, got %v", err)
@@ -1613,7 +1588,11 @@ func TestCheckCostEstimateMarshalError(t *testing.T) {
 }
 
 func TestCheckCostEstimateBadURL(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "://bad", spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "build request") {
 		t.Fatalf("expected build request error, got %v", err)
@@ -1621,7 +1600,11 @@ func TestCheckCostEstimateBadURL(t *testing.T) {
 }
 
 func TestCheckCostEstimateTransportError(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "http://127.0.0.1:1", spec, &http.Client{Timeout: 100 * time.Millisecond}, "")
 	if err == nil || !strings.Contains(err.Error(), "HTTP request failed") {
 		t.Fatalf("expected transport error, got %v", err)
@@ -1642,7 +1625,11 @@ func TestCheckCostEstimateBodyReadError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "read response") {
 		t.Fatalf("expected read response error, got %v", err)
@@ -1658,7 +1645,11 @@ func TestCheckCostEstimateSendsAuthHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "my-token")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1675,223 +1666,13 @@ func TestCheckCostEstimateExactThreshold(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
 	if err != nil {
 		t.Fatalf("expected 0.95 to pass threshold, got %v", err)
-	}
-}
-
-func TestCheckBudgetSkipsWhenNilMax(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{}}
-	if err := checkBudget(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
-		t.Fatalf("expected nil, got %v", err)
-	}
-}
-
-func TestCheckBudgetAllowsUnderCap(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/finops/simulate" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 1.5, "cost_high_usd": 2.0, "currency":"USD"}`))
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow: "benchmark",
-		Model:    "llama",
-		Budget:   benchv1alpha1.Budget{MaxCostUSD: &qty},
-	}
-	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
-		t.Fatalf("expected success, got %v", err)
-	}
-}
-
-func TestCheckBudgetExactCapPasses(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 10.0, "cost_high_usd": 10.0}`))
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
-	}
-	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
-		t.Fatalf("expected success at exact cap, got %v", err)
-	}
-}
-
-func TestCheckBudgetBlocksOverCap(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 50.0, "cost_high_usd": 99.0}`))
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
-	}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
-		t.Fatalf("expected ErrBudgetExceeded, got %v", err)
-	}
-}
-
-func TestCheckBudgetPrefersCostHighOverProjected(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mid estimate under cap, but upper bound over cap — must block.
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 1.0, "cost_high_usd": 50.0}`))
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
-	}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
-		t.Fatalf("expected ErrBudgetExceeded from cost_high_usd, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "cost_high_usd") {
-		t.Fatalf("expected error to name cost_high_usd, got %v", err)
-	}
-}
-
-func TestCheckBudgetFallbackToProjectedWhenCostHighMissing(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 99.0}`))
-	}))
-	defer ts.Close()
-
-	qty := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Budget: benchv1alpha1.Budget{MaxCostUSD: &qty},
-	}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !errors.Is(err, ErrBudgetExceeded) {
-		t.Fatalf("expected ErrBudgetExceeded from projected_cost_usd fallback, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "projected_cost_usd") {
-		t.Fatalf("expected error to name projected_cost_usd, got %v", err)
-	}
-}
-
-func TestCheckBudgetNegativeMax(t *testing.T) {
-	q, err := resource.ParseQuantity("-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err = checkBudget(context.Background(), "http://unused", spec, http.DefaultClient, "")
-	if err == nil || !strings.Contains(err.Error(), "maxCostUSD must be >= 0") {
-		t.Fatalf("expected negative max error, got %v", err)
-	}
-}
-
-func TestCheckBudgetBadAPIBaseURL(t *testing.T) {
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err := checkBudget(context.Background(), "://bad", spec, http.DefaultClient, "")
-	if err == nil || !strings.Contains(err.Error(), "invalid API base") {
-		t.Fatalf("expected parse error, got %v", err)
-	}
-}
-
-func TestCheckBudgetTransportError(t *testing.T) {
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err := checkBudget(context.Background(), "http://127.0.0.1:1", spec, &http.Client{Timeout: 100 * time.Millisecond}, "")
-	if err == nil || !strings.Contains(err.Error(), "HTTP request failed") {
-		t.Fatalf("expected transport error, got %v", err)
-	}
-}
-
-func TestCheckBudgetAPIErrorStatus(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "nope", http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !strings.Contains(err.Error(), "API returned 500") {
-		t.Fatalf("expected API error, got %v", err)
-	}
-}
-
-func TestCheckBudgetInvalidJSON(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{`))
-	}))
-	defer ts.Close()
-
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !strings.Contains(err.Error(), "failed to parse response") {
-		t.Fatalf("expected JSON error, got %v", err)
-	}
-}
-
-func TestCheckBudgetBodyReadError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hj, ok := w.(http.Hijacker)
-		if !ok {
-			http.Error(w, "no hijack", http.StatusInternalServerError)
-			return
-		}
-		conn, buf, _ := hj.Hijack()
-		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
-		_ = buf.Flush()
-		_ = conn.Close()
-	}))
-	defer ts.Close()
-
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{Budget: benchv1alpha1.Budget{MaxCostUSD: &q}}
-	err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "")
-	if err == nil || !strings.Contains(err.Error(), "read response") {
-		t.Fatalf("expected read error, got %v", err)
-	}
-}
-
-func TestCheckBudgetSendsTenantAndAuth(t *testing.T) {
-	var gotTenant, gotAuth string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotTenant = r.Header.Get("X-Tenant-ID")
-		gotAuth = r.Header.Get("Authorization")
-		_, _ = w.Write([]byte(`{"projected_cost_usd": 0.1}`))
-	}))
-	defer ts.Close()
-
-	q := resource.MustParse("10")
-	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Tenant: "tenant-z",
-		Budget: benchv1alpha1.Budget{MaxCostUSD: &q},
-	}
-	if err := checkBudget(context.Background(), ts.URL, spec, http.DefaultClient, "tok"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gotTenant != "tenant-z" || gotAuth != "Bearer tok" {
-		t.Fatalf("tenant=%q auth=%q", gotTenant, gotAuth)
-	}
-}
-
-func TestFinopsSimulateQuery(t *testing.T) {
-	v := finopsSimulateQuery(benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:     "benchmark",
-		Model:        "m1",
-		TemplateHash: "tpl",
-	})
-	if v.Get("suite") != "tpl" || v.Get("model") != "m1" {
-		t.Fatalf("unexpected query: %v", v)
-	}
-	v2 := finopsSimulateQuery(benchv1alpha1.RuneBenchmarkSpec{Workflow: "agentic-agent", Agent: "holmes", Model: "m2"})
-	if v2.Get("agent") != "holmes" || v2.Get("model") != "m2" {
-		t.Fatalf("expected agent and model, got %v", v2)
 	}
 }

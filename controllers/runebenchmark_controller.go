@@ -6,11 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -125,12 +123,8 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil {
 		obj.Status.ConsecutiveFailures++
-		failReason := "RunFailed"
-		if errors.Is(err, ErrBudgetExceeded) {
-			failReason = "BudgetExceeded"
-		}
-		obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionFalse, failReason, err.Error(), obj.Generation))
-		r.Recorder.Eventf(obj, "Warning", failReason, "workflow run failed: %v", err)
+		obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionFalse, "RunFailed", err.Error(), obj.Generation))
+		r.Recorder.Eventf(obj, "Warning", "RunFailed", "workflow run failed: %v", err)
 		logger.Error(err, "run failed")
 		metrics.ReconcileTotal.WithLabelValues("error").Inc()
 		if statusErr := r.Status().Update(ctx, obj); statusErr != nil {
@@ -180,22 +174,23 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 		}
 		return p
 	case "ollama-instance", "llm-instance":
-		return map[string]any{
-			"vastai":        spec.VastAI,
-			"template_hash": spec.TemplateHash,
-			"min_dph":       spec.MinDPH,
-			"max_dph":       spec.MaxDPH,
-			"reliability":   spec.Reliability,
-			"backend_url":   spec.BackendURL,
-			"backend_type":  spec.BackendType,
+		p := map[string]any{
+			"vastai":       false,
+			"backend_url":  spec.BackendURL,
+			"backend_type": spec.BackendType,
 		}
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+			v := spec.Provisioning.VastAI
+			p["vastai"] = true
+			p["template_hash"] = v.TemplateHash
+			p["min_dph"] = v.MinDPH
+			p["max_dph"] = v.MaxDPH
+			p["reliability"] = v.Reliability
+		}
+		return p
 	case "benchmark":
-		return map[string]any{
-			"vastai":                 spec.VastAI,
-			"template_hash":          spec.TemplateHash,
-			"min_dph":                spec.MinDPH,
-			"max_dph":                spec.MaxDPH,
-			"reliability":            spec.Reliability,
+		p := map[string]any{
+			"vastai":                 false,
 			"backend_url":            spec.BackendURL,
 			"backend_type":           spec.BackendType,
 			"question":               spec.Question,
@@ -203,9 +198,18 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"backend_warmup":         spec.BackendWarmup,
 			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
 			"kubeconfig":             spec.Kubeconfig,
-			"vastai_stop_instance":   spec.VastAIStopInstance,
 			"attestation_required":   spec.AttestationRequired,
 		}
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+			v := spec.Provisioning.VastAI
+			p["vastai"] = true
+			p["template_hash"] = v.TemplateHash
+			p["min_dph"] = v.MinDPH
+			p["max_dph"] = v.MaxDPH
+			p["reliability"] = v.Reliability
+			p["vastai_stop_instance"] = v.StopInstance
+		}
+		return p
 	default:
 		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
 		return map[string]any{
@@ -228,6 +232,11 @@ const defaultPollInterval = 5
 // estimateResponse is the expected JSON structure from POST /v1/estimates.
 type estimateResponse struct {
 	ConfidenceScore float64 `json:"confidence_score"`
+}
+
+// simulateResponse is the expected JSON structure from GET /v1/finops/simulate.
+type simulateResponse struct {
+	TotalCostUSD float64 `json:"total_cost_usd"`
 }
 
 // jobStatusResponse is the expected JSON from GET /v1/jobs/{job_id}.
@@ -286,13 +295,24 @@ func maxInt32(a, b int32) int32 {
 // If any cost provider is enabled (VastAI, AWS, GCP, Azure, LocalHardware),
 // it calls the /v1/estimates endpoint and verifies confidence >= 0.95.
 // For backward compatibility, if no explicit cost estimation is configured but
-// spec.VastAI is true, the gate fires automatically.
+// provisioning.vastai is enabled, the gate fires automatically.
 func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
 	ce := spec.CostEstimation
 
+	// Extract provisioning fields if present
+	var templateHash string
+	var minDPH, maxDPH, reliability float64
+	if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+		v := spec.Provisioning.VastAI
+		templateHash = v.TemplateHash
+		minDPH = v.MinDPH
+		maxDPH = v.MaxDPH
+		reliability = v.Reliability
+	}
+
 	// Backward compat: if no explicit costEstimation but vastai provisioning is on, gate it
 	if !ce.VastAI && !ce.AWS && !ce.GCP && !ce.Azure && !ce.LocalHardware {
-		if spec.VastAI {
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
 			ce.VastAI = true
 		} else {
 			return nil
@@ -306,11 +326,11 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 		"gcp":            ce.GCP,
 		"azure":          ce.Azure,
 		"local_hardware": ce.LocalHardware,
-		// Price bounds
-		"template_hash": spec.TemplateHash,
-		"min_dph":       spec.MinDPH,
-		"max_dph":       spec.MaxDPH,
-		"reliability":   spec.Reliability,
+		// Price bounds (from provisioning if available)
+		"template_hash": templateHash,
+		"min_dph":       minDPH,
+		"max_dph":       maxDPH,
+		"reliability":   reliability,
 		// Local hardware params
 		"local_tdp_watts":               ce.LocalTDPWatts,
 		"local_energy_rate_kwh":         ce.LocalEnergyRateKWH,
@@ -360,66 +380,23 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 	return nil
 }
 
-// ErrBudgetExceeded is returned when the finops estimate (cost_high_usd when present, else projected_cost_usd) exceeds spec.budget.maxCostUSD.
-var ErrBudgetExceeded = errors.New("budget exceeded")
-
-// finopsSimulateResponse is the JSON body from GET /v1/finops/simulate (see rune/rune_bench/metrics/pricing.py).
-type finopsSimulateResponse struct {
-	ProjectedCostUSD float64  `json:"projected_cost_usd"`
-	CostHighUSD      *float64 `json:"cost_high_usd,omitempty"`
-}
-
-// effectiveBudgetUSD returns the USD amount to compare against maxCostUSD: prefer cost_high_usd
-// (stricter upper bound) when present, else projected_cost_usd.
-func effectiveBudgetUSD(p finopsSimulateResponse) (value float64, basis string) {
-	if p.CostHighUSD != nil {
-		return *p.CostHighUSD, "cost_high_usd"
-	}
-	return p.ProjectedCostUSD, "projected_cost_usd"
-}
-
-func finopsSimulateQuery(spec benchv1alpha1.RuneBenchmarkSpec) url.Values {
-	v := url.Values{}
-	if spec.Model != "" {
-		v.Set("model", spec.Model)
-	}
-	switch spec.Workflow {
-	case "agentic-agent":
-		if spec.Agent != "" {
-			v.Set("agent", spec.Agent)
-		}
-	case "benchmark":
-		if spec.TemplateHash != "" {
-			v.Set("suite", spec.TemplateHash)
-		}
-	}
-	return v
-}
-
-// checkBudget calls GET /v1/finops/simulate and blocks the run when the effective estimate
-// (cost_high_usd when present, otherwise projected_cost_usd) exceeds spec.budget.maxCostUSD.
+// checkBudget verifies that the projected cost of a benchmark run is within
+// the user-defined budget. It calls the /v1/finops/simulate endpoint.
 func checkBudget(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
 	if spec.Budget.MaxCostUSD == nil {
 		return nil
 	}
-	maxVal := spec.Budget.MaxCostUSD.AsApproximateFloat64()
-	if maxVal < 0 {
-		return fmt.Errorf("budget check: maxCostUSD must be >= 0")
-	}
 
-	raw := strings.TrimRight(apiBase, "/") + "/v1/finops/simulate"
-	u, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("budget check: invalid API base: %w", err)
-	}
-	u.RawQuery = finopsSimulateQuery(spec).Encode()
+	url := fmt.Sprintf("%s/v1/finops/simulate?agent=%s&model=%s&gpu=%s",
+		strings.TrimRight(apiBase, "/"),
+		spec.Agent,
+		spec.Model,
+		spec.Budget.GPU,
+	)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("budget check: failed to build request: %w", err)
-	}
-	if spec.Tenant != "" {
-		req.Header.Set("X-Tenant-ID", spec.Tenant)
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -431,22 +408,25 @@ func checkBudget(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBen
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("budget check: failed to read response: %w", err)
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("budget check: API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("budget check: API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
-	var parsed finopsSimulateResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	var parsed simulateResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return fmt.Errorf("budget check: failed to parse response: %w", err)
 	}
-	effective, basis := effectiveBudgetUSD(parsed)
-	if effective > maxVal {
-		return fmt.Errorf("%w: %s %.4f USD exceeds max %.4f USD", ErrBudgetExceeded, basis, effective, maxVal)
+
+	maxAllowed := spec.Budget.MaxCostUSD.AsApproximateFloat64()
+	if parsed.TotalCostUSD > maxAllowed {
+		return fmt.Errorf("budget check: projected cost $%.4f exceeds maximum allowed $%.4f (BudgetExceeded)",
+			parsed.TotalCostUSD, maxAllowed)
 	}
+
 	return nil
 }
 
@@ -498,6 +478,7 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	if err := checkCostEstimate(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
 		return record, err
 	}
+
 	if err := checkBudget(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
 		return record, err
 	}
