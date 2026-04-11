@@ -671,13 +671,16 @@ func TestBuildPayloadAgenticAgent(t *testing.T) {
 
 func TestBuildPayloadOllamaInstance(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:     "ollama-instance",
-		VastAI:       true,
-		TemplateHash: "abc123",
-		MinDPH:       0.1,
-		MaxDPH:       0.5,
-		Reliability:  0.99,
-		BackendURL:   "http://ollama:11434",
+		Workflow: "ollama-instance",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "abc123",
+				MinDPH:       0.1,
+				MaxDPH:       0.5,
+				Reliability:  0.99,
+			},
+		},
+		BackendURL: "http://ollama:11434",
 	}
 	p := buildPayload(spec)
 	if p["vastai"] != true {
@@ -698,19 +701,22 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 
 func TestBuildPayloadBenchmark(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow:                    "benchmark",
-		VastAI:                      true,
-		TemplateHash:                "tpl",
-		MinDPH:                      0.2,
-		MaxDPH:                      0.8,
-		Reliability:                 0.95,
+		Workflow: "benchmark",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "tpl",
+				MinDPH:       0.2,
+				MaxDPH:       0.8,
+				Reliability:  0.95,
+				StopInstance: true,
+			},
+		},
 		BackendURL:                  "http://ollama:11434",
 		Question:                    "q",
 		Model:                       "m",
 		BackendWarmup:               false,
 		BackendWarmupTimeoutSeconds: 60,
 		Kubeconfig:                  "/kube/config",
-		VastAIStopInstance:          true,
 	}
 	p := buildPayload(spec)
 	for _, k := range []string{
@@ -809,13 +815,16 @@ func TestEstimatesPreflightSuccess(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:   ts.URL,
-			Workflow:     "benchmark",
-			VastAI:       true,
-			TemplateHash: "tpl",
-			MinDPH:       0.1,
-			MaxDPH:       0.5,
-			Reliability:  0.95,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{
+					TemplateHash: "tpl",
+					MinDPH:       0.1,
+					MaxDPH:       0.5,
+					Reliability:  0.95,
+				},
+			},
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -850,9 +859,11 @@ func TestEstimatesPreflightBelowThreshold(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 10,
 		},
 	}
@@ -890,9 +901,11 @@ func TestEstimatesPreflightHTTPError(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 5,
 		},
 	}
@@ -926,9 +939,11 @@ func TestEstimatesPreflightParseError(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL:     ts.URL,
-			Workflow:       "benchmark",
-			VastAI:         true,
+			APIBaseURL: ts.URL,
+			Workflow:   "benchmark",
+			Provisioning: &benchv1alpha1.Provisioning{
+				VastAI: &benchv1alpha1.VastAIProvisioning{},
+			},
 			BackoffSeconds: 5,
 		},
 	}
@@ -968,9 +983,9 @@ func TestEstimatesSkippedForLocalWorkflow(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "ns", Generation: 1},
 		Spec: benchv1alpha1.RuneBenchmarkSpec{
-			APIBaseURL: ts.URL,
-			Workflow:   "benchmark",
-			VastAI:     false,
+			APIBaseURL:   ts.URL,
+			Workflow:     "benchmark",
+			Provisioning: nil,
 		},
 	}
 	r, _ := buildReconciler(t, obj)
@@ -1471,7 +1486,7 @@ func TestPollCancelled(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	spec := benchv1alpha1.RuneBenchmarkSpec{Provisioning: nil}
 	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected nil for non-VastAI, got %v", err)
 	}
@@ -1479,7 +1494,7 @@ func TestCheckCostEstimateSkipsWhenVastAIFalse(t *testing.T) {
 
 func TestCheckCostEstimateSkipsWhenNoCostProvider(t *testing.T) {
 	// No VastAI, no CostEstimation providers → skip
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: false}
+	spec := benchv1alpha1.RuneBenchmarkSpec{Provisioning: nil}
 	if err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected nil when no providers, got %v", err)
 	}
@@ -1543,7 +1558,11 @@ func TestCheckCostEstimateBackwardCompat(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -1557,7 +1576,11 @@ func TestCheckCostEstimateMarshalError(t *testing.T) {
 	t.Cleanup(func() { jsonMarshal = oldMarshal })
 	jsonMarshal = func(any) ([]byte, error) { return nil, errors.New("marshal-boom") }
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "http://unused", spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "marshal") {
 		t.Fatalf("expected marshal error, got %v", err)
@@ -1565,7 +1588,11 @@ func TestCheckCostEstimateMarshalError(t *testing.T) {
 }
 
 func TestCheckCostEstimateBadURL(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "://bad", spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "build request") {
 		t.Fatalf("expected build request error, got %v", err)
@@ -1573,7 +1600,11 @@ func TestCheckCostEstimateBadURL(t *testing.T) {
 }
 
 func TestCheckCostEstimateTransportError(t *testing.T) {
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), "http://127.0.0.1:1", spec, &http.Client{Timeout: 100 * time.Millisecond}, "")
 	if err == nil || !strings.Contains(err.Error(), "HTTP request failed") {
 		t.Fatalf("expected transport error, got %v", err)
@@ -1594,7 +1625,11 @@ func TestCheckCostEstimateBodyReadError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
 	if err == nil || !strings.Contains(err.Error(), "read response") {
 		t.Fatalf("expected read response error, got %v", err)
@@ -1610,7 +1645,11 @@ func TestCheckCostEstimateSendsAuthHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "my-token")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1627,7 +1666,11 @@ func TestCheckCostEstimateExactThreshold(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	spec := benchv1alpha1.RuneBenchmarkSpec{VastAI: true}
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{},
+		},
+	}
 	err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, "")
 	if err != nil {
 		t.Fatalf("expected 0.95 to pass threshold, got %v", err)

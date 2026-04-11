@@ -174,22 +174,23 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 		}
 		return p
 	case "ollama-instance", "llm-instance":
-		return map[string]any{
-			"vastai":        spec.VastAI,
-			"template_hash": spec.TemplateHash,
-			"min_dph":       spec.MinDPH,
-			"max_dph":       spec.MaxDPH,
-			"reliability":   spec.Reliability,
-			"backend_url":   spec.BackendURL,
-			"backend_type":  spec.BackendType,
+		p := map[string]any{
+			"vastai":       false,
+			"backend_url":  spec.BackendURL,
+			"backend_type": spec.BackendType,
 		}
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+			v := spec.Provisioning.VastAI
+			p["vastai"] = true
+			p["template_hash"] = v.TemplateHash
+			p["min_dph"] = v.MinDPH
+			p["max_dph"] = v.MaxDPH
+			p["reliability"] = v.Reliability
+		}
+		return p
 	case "benchmark":
-		return map[string]any{
-			"vastai":                 spec.VastAI,
-			"template_hash":          spec.TemplateHash,
-			"min_dph":                spec.MinDPH,
-			"max_dph":                spec.MaxDPH,
-			"reliability":            spec.Reliability,
+		p := map[string]any{
+			"vastai":                 false,
 			"backend_url":            spec.BackendURL,
 			"backend_type":           spec.BackendType,
 			"question":               spec.Question,
@@ -197,9 +198,18 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			"backend_warmup":         spec.BackendWarmup,
 			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
 			"kubeconfig":             spec.Kubeconfig,
-			"vastai_stop_instance":   spec.VastAIStopInstance,
 			"attestation_required":   spec.AttestationRequired,
 		}
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+			v := spec.Provisioning.VastAI
+			p["vastai"] = true
+			p["template_hash"] = v.TemplateHash
+			p["min_dph"] = v.MinDPH
+			p["max_dph"] = v.MaxDPH
+			p["reliability"] = v.Reliability
+			p["vastai_stop_instance"] = v.StopInstance
+		}
+		return p
 	default:
 		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
 		return map[string]any{
@@ -222,6 +232,11 @@ const defaultPollInterval = 5
 // estimateResponse is the expected JSON structure from POST /v1/estimates.
 type estimateResponse struct {
 	ConfidenceScore float64 `json:"confidence_score"`
+}
+
+// simulateResponse is the expected JSON structure from GET /v1/finops/simulate.
+type simulateResponse struct {
+	TotalCostUSD float64 `json:"total_cost_usd"`
 }
 
 // jobStatusResponse is the expected JSON from GET /v1/jobs/{job_id}.
@@ -280,13 +295,24 @@ func maxInt32(a, b int32) int32 {
 // If any cost provider is enabled (VastAI, AWS, GCP, Azure, LocalHardware),
 // it calls the /v1/estimates endpoint and verifies confidence >= 0.95.
 // For backward compatibility, if no explicit cost estimation is configured but
-// spec.VastAI is true, the gate fires automatically.
+// provisioning.vastai is enabled, the gate fires automatically.
 func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
 	ce := spec.CostEstimation
 
+	// Extract provisioning fields if present
+	var templateHash string
+	var minDPH, maxDPH, reliability float64
+	if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+		v := spec.Provisioning.VastAI
+		templateHash = v.TemplateHash
+		minDPH = v.MinDPH
+		maxDPH = v.MaxDPH
+		reliability = v.Reliability
+	}
+
 	// Backward compat: if no explicit costEstimation but vastai provisioning is on, gate it
 	if !ce.VastAI && !ce.AWS && !ce.GCP && !ce.Azure && !ce.LocalHardware {
-		if spec.VastAI {
+		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
 			ce.VastAI = true
 		} else {
 			return nil
@@ -300,11 +326,11 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 		"gcp":            ce.GCP,
 		"azure":          ce.Azure,
 		"local_hardware": ce.LocalHardware,
-		// Price bounds
-		"template_hash": spec.TemplateHash,
-		"min_dph":       spec.MinDPH,
-		"max_dph":       spec.MaxDPH,
-		"reliability":   spec.Reliability,
+		// Price bounds (from provisioning if available)
+		"template_hash": templateHash,
+		"min_dph":       minDPH,
+		"max_dph":       maxDPH,
+		"reliability":   reliability,
 		// Local hardware params
 		"local_tdp_watts":               ce.LocalTDPWatts,
 		"local_energy_rate_kwh":         ce.LocalEnergyRateKWH,
@@ -349,6 +375,56 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 	}
 	if parsed.ConfidenceScore < estimateConfidenceThreshold {
 		return fmt.Errorf("cost estimate: confidence %.2f below threshold %.2f", parsed.ConfidenceScore, estimateConfidenceThreshold)
+	}
+
+	return nil
+}
+
+// checkBudget verifies that the projected cost of a benchmark run is within
+// the user-defined budget. It calls the /v1/finops/simulate endpoint.
+func checkBudget(ctx context.Context, apiBase string, spec benchv1alpha1.RuneBenchmarkSpec, httpClient *http.Client, token string) error {
+	if spec.Budget.MaxCostUSD == nil {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/v1/finops/simulate?agent=%s&model=%s&gpu=%s",
+		strings.TrimRight(apiBase, "/"),
+		spec.Agent,
+		spec.Model,
+		spec.Budget.GPU,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("budget check: failed to build request: %w", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("budget check: HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("budget check: failed to read response: %w", err)
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("budget check: API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var parsed simulateResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return fmt.Errorf("budget check: failed to parse response: %w", err)
+	}
+
+	maxAllowed := spec.Budget.MaxCostUSD.AsApproximateFloat64()
+	if parsed.TotalCostUSD > maxAllowed {
+		return fmt.Errorf("budget check: projected cost $%.4f exceeds maximum allowed $%.4f (BudgetExceeded)",
+			parsed.TotalCostUSD, maxAllowed)
 	}
 
 	return nil
@@ -400,6 +476,10 @@ func (r *RuneBenchmarkReconciler) executeBenchmark(ctx context.Context, obj *ben
 	}
 
 	if err := checkCostEstimate(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
+		return record, err
+	}
+
+	if err := checkBudget(ctx, obj.Spec.APIBaseURL, obj.Spec, clientHTTP, token); err != nil {
 		return record, err
 	}
 

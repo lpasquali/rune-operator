@@ -2,6 +2,7 @@
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,13 +35,8 @@ type RuneBenchmarkSpec struct {
 	// Kubeconfig path forwarded to agentic-agent and benchmark jobs
 	Kubeconfig string `json:"kubeconfig,omitempty"`
 
-	// Vast.ai provisioning options (ollama-instance, benchmark)
-	VastAI             bool    `json:"vastai,omitempty"`
-	TemplateHash       string  `json:"templateHash,omitempty"`
-	MinDPH             float64 `json:"minDph,omitempty"`
-	MaxDPH             float64 `json:"maxDph,omitempty"`
-	Reliability        float64 `json:"reliability,omitempty"`
-	VastAIStopInstance bool    `json:"vastaiStopInstance,omitempty"`
+	// Provisioning defines optional cloud resource provisioning settings.
+	Provisioning *Provisioning `json:"provisioning,omitempty"`
 
 	// CostEstimation configures the pre-flight cost safety gate.
 	CostEstimation CostEstimation `json:"costEstimation,omitempty"`
@@ -49,6 +45,38 @@ type RuneBenchmarkSpec struct {
 	Agent string `json:"agent,omitempty"`
 	// When true, demands SLSA L3 signed provenance before execution
 	AttestationRequired bool `json:"attestationRequired,omitempty"`
+
+	// Budget enforces cost limits on benchmarks.
+	Budget Budget `json:"budget,omitempty"`
+}
+
+type Budget struct {
+	// Maximum allowed cost in USD for this execution.
+	// +kubebuilder:validation:Minimum=0
+	MaxCostUSD *resource.Quantity `json:"maxCostUSD,omitempty"`
+
+	// Optional GPU hint for cost estimation (e.g. "rtx4090", "a100").
+	GPU string `json:"gpu,omitempty"`
+}
+
+// Provisioning encapsulates cloud resource provisioning details.
+type Provisioning struct {
+	// VastAI provisioning settings.
+	VastAI *VastAIProvisioning `json:"vastai,omitempty"`
+}
+
+// VastAIProvisioning contains settings for Vast.ai GPU instance provisioning.
+type VastAIProvisioning struct {
+	// TemplateHash is the Vast.ai template ID.
+	TemplateHash string `json:"templateHash"`
+	// MinDPH is the minimum dollars per hour.
+	MinDPH float64 `json:"minDph,omitempty"`
+	// MaxDPH is the maximum dollars per hour.
+	MaxDPH float64 `json:"maxDph,omitempty"`
+	// Reliability is the minimum reliability score (0.0 to 1.0).
+	Reliability float64 `json:"reliability,omitempty"`
+	// StopInstance determines if the instance should be destroyed after the run.
+	StopInstance bool `json:"stopInstance,omitempty"`
 }
 
 // CostEstimation configures the pre-flight cost gate.
