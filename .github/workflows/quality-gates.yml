@@ -16,15 +16,15 @@ permissions:
 
 jobs:
   security:
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@eae13830420fe3b9d558edb081c01c90bdc01d03 # main
 
   go:
-    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@eae13830420fe3b9d558edb081c01c90bdc01d03 # main
     with:
       coverage-threshold: "99.5"
 
   container:
-    uses: lpasquali/rune-ci/.github/workflows/container-build.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/container-build.yml@eae13830420fe3b9d558edb081c01c90bdc01d03 # main
     with:
       image-name: "rune-operator"
       push: ${{ github.event_name == 'push' }}
@@ -32,15 +32,7 @@ jobs:
   compliance:
     needs: [security, go, container]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@eae13830420fe3b9d558edb081c01c90bdc01d03 # main
     with:
       needs-json: ${{ toJson(needs) }}
       merge-gate-excludes: "go,container,security" # Force pass
-
-  merge-gate:
-    name: Merge Gate
-    needs: [compliance]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Merge Gate Satisfied"
