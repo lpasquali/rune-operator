@@ -8,7 +8,7 @@ on:
 
 jobs:
   release:
-    uses: lpasquali/rune-ci/.github/workflows/release.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
+    uses: lpasquali/rune-ci/.github/workflows/release.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
     with:
       image-name: rune-operator
     permissions:
