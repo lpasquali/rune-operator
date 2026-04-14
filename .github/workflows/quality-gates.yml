@@ -24,7 +24,7 @@ jobs:
       coverage-threshold: "99.5"
 
   container:
-    uses: lpasquali/rune-ci/.github/workflows/container-build.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/container-build.yml@7e931bedd26d4e03bd9e6bd4f810e4d4c916ea5f # main
     with:
       image-name: "rune-operator"
       push: ${{ github.event_name == 'push' }}
