@@ -243,7 +243,9 @@ func TestMain_ExitOnRunError(t *testing.T) {
 	setupSignalHandlerFn = func() context.Context { return context.Background() }
 	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
 	os.Args = []string{"cmd"}
-	newManagerFn = func(*runtime.Scheme, string, string, string, bool) (managerLike, error) { return nil, errors.New("boom") }
+	newManagerFn = func(*runtime.Scheme, string, string, string, bool) (managerLike, error) {
+		return nil, errors.New("boom")
+	}
 	setupReconcilerFn = func(managerLike) error { return nil }
 
 	exited := 0
