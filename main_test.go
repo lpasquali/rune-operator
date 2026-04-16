@@ -311,3 +311,35 @@ func TestDefaultSetupEStopFn_TypeAssertionError(t *testing.T) {
 		t.Fatalf("expected controller-runtime manager error, got %v", err)
 	}
 }
+
+// TestNewDynamicClientFnIntegration tests the real dynamic client creation.
+// This integration test requires a valid kubeconfig (e.g., from kind).
+// It verifies that newDynamicClientFn can create a real dynamic client without stubbing.
+func TestNewDynamicClientFnIntegration(t *testing.T) {
+	// Skip if no kubeconfig is available (e.g., in minimal test environments)
+	if _, err := os.Stat(os.ExpandEnv("$HOME/.kube/config")); err != nil {
+		t.Skip("kubeconfig not found, skipping integration test (requires kind or k8s cluster)")
+	}
+
+	// Create a real config using the standard k8s client loading
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		t.Skip("failed to load kubeconfig, skipping integration test: " + err.Error())
+	}
+
+	// Call the real newDynamicClientFn (not stubbed)
+	dynClient, err := newDynamicClientFn(cfg)
+	if err != nil {
+		t.Fatalf("newDynamicClientFn failed: %v", err)
+	}
+
+	if dynClient == nil {
+		t.Fatalf("expected non-nil dynamic client")
+	}
+
+	// Verify it implements dynamic.Interface
+	_, ok := dynClient.(dynamic.Interface)
+	if !ok {
+		t.Fatalf("client does not implement dynamic.Interface")
+	}
+}
