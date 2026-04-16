@@ -39,11 +39,12 @@ var (
 	buildManagerFn   = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
 		return ctrl.NewManager(cfg, options)
 	}
-	newManagerFn = func(s *runtime.Scheme, metricsAddr, probeAddr string, enableLeaderElection bool) (managerLike, error) {
+	newManagerFn = func(s *runtime.Scheme, metricsAddr, probeAddr, pprofAddr string, enableLeaderElection bool) (managerLike, error) {
 		return buildManagerFn(getConfigOrDieFn(), ctrl.Options{
 			Scheme:                 s,
 			Metrics:                server.Options{BindAddress: metricsAddr},
 			HealthProbeBindAddress: probeAddr,
+			PprofBindAddress:       pprofAddr,
 			LeaderElection:         enableLeaderElection,
 			LeaderElectionID:       "rune-operator.bench.rune.ai",
 		})
@@ -86,12 +87,14 @@ var (
 func main() {
 	var metricsAddr string
 	var probeAddr string
+	var pprofAddr string
 	var enableLeaderElection bool
 	var estopEnabled bool
 	var estopConfigMapName string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&pprofAddr, "pprof-bind-address", "0", "The address the Go pprof endpoint binds to. Use 0 or empty to disable.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true, "Enable leader election for controller manager.")
 	flag.BoolVar(&estopEnabled, "estop-enabled", false, "Enable the E-Stop controller.")
 	flag.StringVar(&estopConfigMapName, "estop-configmap-name", controllers.DefaultEStopConfigMapName, "Name of the ConfigMap watched for E-Stop signals.")
@@ -101,13 +104,13 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	if err := run(metricsAddr, probeAddr, enableLeaderElection, estopEnabled, estopConfigMapName); err != nil {
+	if err := run(metricsAddr, probeAddr, pprofAddr, enableLeaderElection, estopEnabled, estopConfigMapName); err != nil {
 		klog.ErrorS(err, "problem running manager")
 		exitFn(1)
 	}
 }
 
-func run(metricsAddr, probeAddr string, enableLeaderElection bool, estopEnabled bool, estopConfigMapName string) error {
+func run(metricsAddr, probeAddr, pprofAddr string, enableLeaderElection bool, estopEnabled bool, estopConfigMapName string) error {
 	s, err := runtimeScheme()
 	if err != nil {
 		return fmt.Errorf("unable to build runtime scheme: %w", err)
@@ -116,7 +119,7 @@ func run(metricsAddr, probeAddr string, enableLeaderElection bool, estopEnabled 
 	shutdownTelemetry := telemetry.SetupOTel("rune-operator")
 	defer shutdownTelemetry()
 
-	mgr, err := newManagerFn(s, metricsAddr, probeAddr, enableLeaderElection)
+	mgr, err := newManagerFn(s, metricsAddr, probeAddr, pprofAddr, enableLeaderElection)
 	if err != nil {
 		return fmt.Errorf("unable to create manager: %w", err)
 	}

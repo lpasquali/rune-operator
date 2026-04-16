@@ -110,6 +110,9 @@ func TestDefaultNewManagerFnUsesConfiguredOptions(t *testing.T) {
 		if options.HealthProbeBindAddress != ":8081" {
 			t.Fatalf("unexpected probe bind address: %q", options.HealthProbeBindAddress)
 		}
+		if options.PprofBindAddress != "0" {
+			t.Fatalf("unexpected pprof bind address: %q", options.PprofBindAddress)
+		}
 		if !options.LeaderElection {
 			t.Fatalf("expected leader election enabled")
 		}
@@ -119,7 +122,7 @@ func TestDefaultNewManagerFnUsesConfiguredOptions(t *testing.T) {
 		return &fakeManager{}, nil
 	}
 
-	mgr, err := newManagerFn(runtime.NewScheme(), ":8080", ":8081", true)
+	mgr, err := newManagerFn(runtime.NewScheme(), ":8080", ":8081", "0", true)
 	if err != nil {
 		t.Fatalf("expected newManagerFn success, got %v", err)
 	}
@@ -169,51 +172,51 @@ func TestRun_ErrorBranchesAndSuccess(t *testing.T) {
 	setupSignalHandlerFn = func() context.Context { return context.Background() }
 
 	addClientGoSchemeFn = func(*runtime.Scheme) error { return errors.New("scheme-build") }
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to build runtime scheme") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to build runtime scheme") {
 		t.Fatalf("expected runtime scheme build error, got %v", err)
 	}
 	addClientGoSchemeFn = oldClientGo
 
-	newManagerFn = func(*runtime.Scheme, string, string, bool) (managerLike, error) {
+	newManagerFn = func(*runtime.Scheme, string, string, string, bool) (managerLike, error) {
 		return nil, errors.New("new-manager")
 	}
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to create manager") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to create manager") {
 		t.Fatalf("expected start-manager error, got %v", err)
 	}
 
 	m := &fakeManager{}
-	newManagerFn = func(*runtime.Scheme, string, string, bool) (managerLike, error) { return m, nil }
+	newManagerFn = func(*runtime.Scheme, string, string, string, bool) (managerLike, error) { return m, nil }
 	setupReconcilerFn = func(managerLike) error { return errors.New("setup-reconciler") }
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to create controller") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "unable to create controller") {
 		t.Fatalf("expected create-controller error, got %v", err)
 	}
 
 	setupReconcilerFn = func(managerLike) error { return nil }
 	// E-Stop error branch.
 	setupEStopFn = func(managerLike, bool, string) error { return errors.New("estop-err") }
-	if err := run(":1", ":2", true, true, "rune-estop"); err == nil || !strings.Contains(err.Error(), "e-stop controller") {
+	if err := run(":1", ":2", "0", true, true, "rune-estop"); err == nil || !strings.Contains(err.Error(), "e-stop controller") {
 		t.Fatalf("expected e-stop controller error, got %v", err)
 	}
 	setupEStopFn = func(managerLike, bool, string) error { return nil }
 	m.healthErr = errors.New("health")
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "health check") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "health check") {
 		t.Fatalf("expected health check error, got %v", err)
 	}
 
 	m.healthErr = nil
 	m.readyErr = errors.New("ready")
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "ready check") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "ready check") {
 		t.Fatalf("expected ready check error, got %v", err)
 	}
 
 	m.readyErr = nil
 	m.startErr = errors.New("start")
-	if err := run(":1", ":2", true, false, ""); err == nil || !strings.Contains(err.Error(), "start") {
+	if err := run(":1", ":2", "0", true, false, ""); err == nil || !strings.Contains(err.Error(), "start") {
 		t.Fatalf("expected start error, got %v", err)
 	}
 
 	m.startErr = nil
-	if err := run(":1", ":2", true, false, ""); err != nil {
+	if err := run(":1", ":2", "0", true, false, ""); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 	if m.startCalls == 0 {
@@ -240,7 +243,7 @@ func TestMain_ExitOnRunError(t *testing.T) {
 	setupSignalHandlerFn = func() context.Context { return context.Background() }
 	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
 	os.Args = []string{"cmd"}
-	newManagerFn = func(*runtime.Scheme, string, string, bool) (managerLike, error) { return nil, errors.New("boom") }
+	newManagerFn = func(*runtime.Scheme, string, string, string, bool) (managerLike, error) { return nil, errors.New("boom") }
 	setupReconcilerFn = func(managerLike) error { return nil }
 
 	exited := 0
