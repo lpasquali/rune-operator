@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/dynamic"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -36,11 +36,11 @@ type managerLike interface {
 }
 
 var (
-	getConfigOrDieFn = ctrl.GetConfigOrDie
+	getConfigOrDieFn   = ctrl.GetConfigOrDie
 	newDynamicClientFn = func(cfg *rest.Config) (dynamic.Interface, error) {
 		return dynamic.NewForConfig(cfg)
 	}
-	buildManagerFn   = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
+	buildManagerFn = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
 		return ctrl.NewManager(cfg, options)
 	}
 	newManagerFn = func(s *runtime.Scheme, metricsAddr, probeAddr, pprofAddr string, enableLeaderElection bool) (managerLike, error) {
