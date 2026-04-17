@@ -96,13 +96,7 @@ func (c failingGetClient) Get(context.Context, client.ObjectKey, client.Object, 
 
 func buildReconciler(t *testing.T, objs ...runtime.Object) (*RuneBenchmarkReconciler, *runtime.Scheme) {
 	t.Helper()
-	s := runtime.NewScheme()
-	if err := benchv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("add benchmark scheme: %v", err)
-	}
-	if err := corev1.AddToScheme(s); err != nil {
-		t.Fatalf("add core scheme: %v", err)
-	}
+	s := controllersTestScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(objs...).Build()
 	return &RuneBenchmarkReconciler{Client: c, Scheme: s, Recorder: record.NewFakeRecorder(50)}, s
 }

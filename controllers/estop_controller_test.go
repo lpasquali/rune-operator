@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -23,13 +22,7 @@ import (
 // seeded with the provided objects.
 func buildEStopReconciler(t *testing.T, objs ...client.Object) *EStopReconciler {
 	t.Helper()
-	s := runtime.NewScheme()
-	if err := benchv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("add benchmark scheme: %v", err)
-	}
-	if err := corev1.AddToScheme(s); err != nil {
-		t.Fatalf("add core scheme: %v", err)
-	}
+	s := controllersTestScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).Build()
 	return &EStopReconciler{Client: c, Scheme: s}
 }
@@ -313,9 +306,7 @@ func (c estopUpdateErrorClient) Update(_ context.Context, _ client.Object, _ ...
 
 // TestEStop_GetError verifies that a non-NotFound error from Get is propagated.
 func TestEStop_GetError(t *testing.T) {
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
 
 	r := &EStopReconciler{
@@ -333,9 +324,7 @@ func TestEStop_GetError(t *testing.T) {
 
 // TestEStop_GetError_IsNotFound verifies the IsNotFound branch in Get.
 func TestEStop_GetError_IsNotFound(t *testing.T) {
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
 	r := &EStopReconciler{
 		Client: estopGetErrorClient{
@@ -357,9 +346,7 @@ func TestEStop_ListBenchmarksError(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: DefaultEStopConfigMapName},
 		Data:       map[string]string{"triggered": "true"},
 	}
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm).Build()
 	listClient := &estopListErrorClient{Client: base, benchErr: errors.New("list-bench-err")}
 	r := &EStopReconciler{Client: listClient, Scheme: s}
@@ -384,9 +371,7 @@ func TestEStop_ListPodsError(t *testing.T) {
 			Workflow:   "benchmark",
 		},
 	}
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, bench).Build()
 	listClient := &estopListErrorClient{Client: base, podErr: errors.New("list-pod-err")}
 	r := &EStopReconciler{Client: listClient, Scheme: s}
@@ -411,9 +396,7 @@ func TestEStop_UpdateBenchmarkError(t *testing.T) {
 			Workflow:   "benchmark",
 		},
 	}
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, bench).Build()
 
 	r := &EStopReconciler{
@@ -443,9 +426,7 @@ func TestEStop_PatchPodErrorContinues(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "pod-fail"},
 	}
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).WithObjects(cm, bench, pod).Build()
 
 	r := &EStopReconciler{
@@ -486,8 +467,7 @@ func (c podPatchErrorClient) Get(ctx context.Context, key types.NamespacedName, 
 
 // TestEStop_SetupWithManager_NilGuard tests the nil manager guard.
 func TestEStop_SetupWithManager_NilGuard(t *testing.T) {
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
 	r := &EStopReconciler{Client: base, Scheme: s}
 
@@ -503,9 +483,7 @@ func TestEStop_SetupWithManager_Injectable(t *testing.T) {
 	oldSetup := setupEStopControllerWithManager
 	t.Cleanup(func() { setupEStopControllerWithManager = oldSetup })
 
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
 	r := &EStopReconciler{Client: base, Scheme: s, EStopConfigMapName: "custom-estop"}
 
@@ -616,9 +594,7 @@ func TestAnnotatePodsForScrub_NoBenchmarks(t *testing.T) {
 // TestAnnotatePodsForScrub_BenchmarkListError covers the benchmark List error
 // branch inside annotatePodsForScrub when called directly.
 func TestAnnotatePodsForScrub_BenchmarkListError(t *testing.T) {
-	s := runtime.NewScheme()
-	_ = corev1.AddToScheme(s)
-	_ = benchv1alpha1.AddToScheme(s)
+	s := controllersTestScheme(t)
 	base := fake.NewClientBuilder().WithScheme(s).Build()
 	lc := &estopListErrorClient{Client: base, benchErr: errors.New("bench-list-in-annotate")}
 	r := &EStopReconciler{Client: lc, Scheme: s}
