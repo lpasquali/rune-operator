@@ -2,6 +2,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -48,6 +49,22 @@ type RuneBenchmarkSpec struct {
 
 	// Budget enforces cost limits on benchmarks.
 	Budget Budget `json:"budget,omitempty"`
+
+	// InfrastructureRef optionally references a Crossplane Claim (typically a
+	// RuneDatabase or RuneObjectStore managed via rune-charts/crossplane). When
+	// set, the reconciler waits for the referenced object to report
+	// `type: Synced status: True` AND `type: Ready status: True` before
+	// submitting benchmark jobs, and emits an `InfrastructureNotReady` Warning
+	// event with 30s requeue otherwise. This prevents races where a benchmark
+	// is scheduled before its external dependencies are provisioned.
+	//
+	// The operator reads the referenced object via the generic controller
+	// client using `unstructured.Unstructured`, so no new module dependency on
+	// `crossplane-runtime` is pulled in. For GVKs outside
+	// `database.infra.rune.ai` and `storage.infra.rune.ai` the cluster admin
+	// must grant the operator's ServiceAccount `get` on that group/resource.
+	// +optional
+	InfrastructureRef *corev1.ObjectReference `json:"infrastructureRef,omitempty"`
 }
 
 type Budget struct {
