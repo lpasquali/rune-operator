@@ -19,7 +19,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,6 +51,8 @@ var jsonMarshal = json.Marshal
 // +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
+// +kubebuilder:rbac:groups=database.infra.rune.ai,resources=runedatabases;xrunedatabases,verbs=get;list;watch
+// +kubebuilder:rbac:groups=storage.infra.rune.ai,resources=runeobjectstores;xruneobjectstores,verbs=get;list;watch
 
 func (r *RuneBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if mgr == nil {
@@ -98,6 +102,18 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if obj.Spec.Suspend {
 		metrics.ReconcileTotal.WithLabelValues("suspended").Inc()
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	}
+
+	if ready, reason, infraErr := r.checkInfrastructureRef(ctx, obj); infraErr != nil {
+		metrics.ReconcileTotal.WithLabelValues("infra_get_error").Inc()
+		r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+		logger.Error(infraErr, "infrastructureRef lookup failed", "reason", reason)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	} else if !ready {
+		metrics.ReconcileTotal.WithLabelValues("infra_not_ready").Inc()
+		r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+		logger.Info("infrastructureRef not ready; requeuing", "reason", reason)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	now := metav1.Now()
@@ -614,4 +630,79 @@ func nextFromCron(spec string, from time.Time) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return schedule.Next(from), nil
+}
+
+// checkInfrastructureRef evaluates obj.Spec.InfrastructureRef against a live
+// object on the cluster. When the ref is nil the benchmark proceeds
+// normally. When set, the referenced object is fetched via the generic
+// controller client using unstructured.Unstructured (no dynamic client or
+// crossplane-runtime dep) and its .status.conditions are inspected for both
+// `type: Synced status: True` AND `type: Ready status: True`.
+//
+// Return semantics:
+//   - (true,  "", nil)         → proceed with benchmark.
+//   - (false, reason, nil)     → referenced object exists but is not yet
+//     ready; caller should emit an event and requeue. `err` is nil so the
+//     reconciler does not escalate to a transient failure.
+//   - (false, reason, err)     → lookup failure (bad apiVersion, object
+//     missing, RBAC denial). Caller decides how to react; the operator's
+//     Reconcile currently emits a Warning event + 30s requeue rather than
+//     returning the error upstream, matching the existing readiness-gate
+//     style.
+func (r *RuneBenchmarkReconciler) checkInfrastructureRef(ctx context.Context, obj *benchv1alpha1.RuneBenchmark) (bool, string, error) {
+	ref := obj.Spec.InfrastructureRef
+	if ref == nil {
+		return true, "", nil
+	}
+	if ref.APIVersion == "" || ref.Kind == "" || ref.Name == "" {
+		return false, "infrastructureRef must set apiVersion, kind, and name", nil
+	}
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return false, fmt.Sprintf("invalid infrastructureRef apiVersion %q: %v", ref.APIVersion, err), err
+	}
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(gv.WithKind(ref.Kind))
+	ns := ref.Namespace
+	if ns == "" {
+		ns = obj.Namespace
+	}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: ref.Name}, u); err != nil {
+		return false, fmt.Sprintf("cannot fetch infrastructureRef %s/%s: %v", ref.Kind, ref.Name, err), err
+	}
+	synced, ready := infrastructureConditions(u)
+	if !synced || !ready {
+		return false, fmt.Sprintf(
+			"infrastructureRef %s %s/%s not ready (Synced=%v Ready=%v)",
+			ref.Kind, ns, ref.Name, synced, ready,
+		), nil
+	}
+	return true, "", nil
+}
+
+// infrastructureConditions returns (synced, ready) by walking
+// .status.conditions on the given unstructured object. Crossplane XRs
+// publish both conditions; so does the `Composite` primitive we use for
+// XRuneDatabase / XRuneObjectStore.
+func infrastructureConditions(u *unstructured.Unstructured) (bool, bool) {
+	conds, found, err := unstructured.NestedSlice(u.Object, "status", "conditions")
+	if err != nil || !found {
+		return false, false
+	}
+	synced, ready := false, false
+	for _, c := range conds {
+		m, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		t, _ := m["type"].(string)
+		s, _ := m["status"].(string)
+		switch t {
+		case "Synced":
+			synced = s == "True"
+		case "Ready":
+			ready = s == "True"
+		}
+	}
+	return synced, ready
 }
