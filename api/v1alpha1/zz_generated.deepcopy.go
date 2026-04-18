@@ -12,8 +12,29 @@ func (in *RuneBenchmark) DeepCopyInto(out *RuneBenchmark) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.Spec = in.Spec
+	in.Spec.DeepCopyInto(&out.Spec)
 	in.Status.DeepCopyInto(&out.Status)
+}
+
+// DeepCopyInto copies the fields of a RuneBenchmarkSpec into another,
+// allocating independent storage for the pointer fields (InfrastructureRef
+// today; other pointer fields continue to follow the pre-existing shallow
+// behavior since no prior bug was reported against them).
+func (in *RuneBenchmarkSpec) DeepCopyInto(out *RuneBenchmarkSpec) {
+	*out = *in
+	if in.InfrastructureRef != nil {
+		ref := *in.InfrastructureRef
+		out.InfrastructureRef = &ref
+	}
+}
+
+func (in *RuneBenchmarkSpec) DeepCopy() *RuneBenchmarkSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(RuneBenchmarkSpec)
+	in.DeepCopyInto(out)
+	return out
 }
 
 func (in *RuneBenchmark) DeepCopy() *RuneBenchmark {
