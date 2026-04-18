@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -87,6 +88,45 @@ func TestDeepCopyNilReceivers(t *testing.T) {
 	var list *RuneBenchmarkList
 	if list.DeepCopy() != nil || list.DeepCopyObject() != nil {
 		t.Fatalf("expected nil deep copy/object for nil RuneBenchmarkList")
+	}
+}
+
+// TestSpecDeepCopyInfrastructureRef covers the new InfrastructureRef pointer
+// on RuneBenchmarkSpec: the copy must be independent of the original and the
+// nil-input fast path must not allocate an empty ref.
+func TestSpecDeepCopyInfrastructureRef(t *testing.T) {
+	spec := RuneBenchmarkSpec{
+		Workflow: "wf",
+		InfrastructureRef: &corev1.ObjectReference{
+			APIVersion: "database.infra.rune.ai/v1alpha1",
+			Kind:       "RuneDatabase",
+			Name:       "rune-database",
+			Namespace:  "rune",
+		},
+	}
+	cp := spec.DeepCopy()
+	if cp == nil {
+		t.Fatalf("DeepCopy returned nil")
+	}
+	if cp.InfrastructureRef == spec.InfrastructureRef {
+		t.Fatalf("DeepCopy aliased InfrastructureRef pointer")
+	}
+	cp.InfrastructureRef.Name = "mutated"
+	if spec.InfrastructureRef.Name == "mutated" {
+		t.Fatalf("mutation leaked back to original")
+	}
+
+	// Nil fast path.
+	var nilSpec *RuneBenchmarkSpec
+	if nilSpec.DeepCopy() != nil {
+		t.Fatalf("expected DeepCopy on nil receiver to return nil")
+	}
+
+	// Spec with no InfrastructureRef: copy must not materialise one.
+	bare := RuneBenchmarkSpec{Workflow: "wf"}
+	bareCopy := bare.DeepCopy()
+	if bareCopy.InfrastructureRef != nil {
+		t.Fatalf("DeepCopy of nil-InfrastructureRef spec should leave it nil")
 	}
 }
 
