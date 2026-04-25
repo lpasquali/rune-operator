@@ -15,10 +15,12 @@ type RuneBenchmarkSpec struct {
 	Question          string `json:"question,omitempty"`
 	Model             string `json:"model,omitempty"`
 	BackendURL        string `json:"backendUrl,omitempty"`
-	// BackendType is the LLM backend type (e.g., "ollama", "k8s-inference").
+	// BackendType is the LLM backend type (e.g., "ollama", "bedrock", "k8s-inference").
 	// +kubebuilder:default="ollama"
-	BackendType    string `json:"backendType,omitempty"`
-	InsecureTLS    bool   `json:"insecureTls,omitempty"`
+	BackendType string `json:"backendType,omitempty"`
+	// Region is required for some backends like "bedrock".
+	Region      string `json:"region,omitempty"`
+	InsecureTLS bool   `json:"insecureTls,omitempty"`
 	Schedule       string `json:"schedule,omitempty"`
 	Suspend        bool   `json:"suspend,omitempty"`
 	TimeoutSeconds int32  `json:"timeoutSeconds,omitempty"`
