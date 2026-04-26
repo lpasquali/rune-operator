@@ -1736,3 +1736,41 @@ func TestBuildPayloadDefault(t *testing.T) {
 		t.Fatal("expected question in default payload")
 	}
 }
+
+func TestBuildPayloadAWSEstimation(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "benchmark",
+		CostEstimation: benchv1alpha1.CostEstimation{AWS: true},
+	}
+	p := buildPayload(spec)
+	if p["aws"] != true {
+		t.Fatal("expected aws=true in payload")
+	}
+}
+
+func TestBuildPayloadWithAgent(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "agentic-agent",
+		Agent: "test-agent",
+	}
+	p := buildPayload(spec)
+	if p["agent"] != "test-agent" {
+		t.Fatal("expected agent=test-agent in payload")
+	}
+}
+
+func TestBuildPayloadWithProvisioning(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "benchmark",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "abc",
+				MinDPH: 1.0,
+			},
+		},
+	}
+	p := buildPayload(spec)
+	if p["vastai"] != true || p["template_hash"] != "abc" || p["min_dph"] != 1.0 {
+		t.Fatal("failed to map vastai provisioning fields")
+	}
+}
