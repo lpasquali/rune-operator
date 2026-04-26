@@ -8,26 +8,26 @@ import (
 )
 
 type RuneBenchmarkSpec struct {
-	APIBaseURL        string `json:"apiBaseUrl"`
+	APIBaseURL				string `json:"apiBaseUrl"`
 	APITokenSecretRef string `json:"apiTokenSecretRef,omitempty"`
-	Tenant            string `json:"tenant,omitempty"`
-	Workflow          string `json:"workflow"`
-	Question          string `json:"question,omitempty"`
-	Model             string `json:"model,omitempty"`
-	BackendURL        string `json:"backendUrl,omitempty"`
+	Tenant						string `json:"tenant,omitempty"`
+	Workflow					string `json:"workflow"`
+	Question					string `json:"question,omitempty"`
+	Model						string `json:"model,omitempty"`
+	BackendURL				string `json:"backendUrl,omitempty"`
 	// BackendType is the LLM backend type (e.g., "ollama", "bedrock", "k8s-inference").
 	// +kubebuilder:default="ollama"
 	BackendType string `json:"backendType,omitempty"`
 	// Region is required for some backends like "bedrock".
-	Region      string `json:"region,omitempty"`
-	InsecureTLS bool   `json:"insecureTls,omitempty"`
-	Schedule       string `json:"schedule,omitempty"`
-	Suspend        bool   `json:"suspend,omitempty"`
-	TimeoutSeconds int32  `json:"timeoutSeconds,omitempty"`
-	BackoffSeconds int32  `json:"backoffSeconds,omitempty"`
+	Region			string `json:"region,omitempty"`
+	InsecureTLS bool	`json:"insecureTls,omitempty"`
+	Schedule			string `json:"schedule,omitempty"`
+	Suspend				bool	`json:"suspend,omitempty"`
+	TimeoutSeconds int32	`json:"timeoutSeconds,omitempty"`
+	BackoffSeconds int32	`json:"backoffSeconds,omitempty"`
 
 	// Backend warmup options (agentic-agent, benchmark)
-	BackendWarmup               bool  `json:"backendWarmup,omitempty"`
+	BackendWarmup							bool	`json:"backendWarmup,omitempty"`
 	BackendWarmupTimeoutSeconds int32 `json:"backendWarmupTimeoutSeconds,omitempty"`
 
 	// PollIntervalSeconds is the interval between job status polls (default 5).
@@ -104,38 +104,38 @@ type VastAIProvisioning struct {
 type CostEstimation struct {
 	// Cloud providers
 	VastAI bool `json:"vastai,omitempty"`
-	AWS    bool `json:"aws,omitempty"`
-	GCP    bool `json:"gcp,omitempty"`
-	Azure  bool `json:"azure,omitempty"`
+	AWS		bool `json:"aws,omitempty"`
+	GCP		bool `json:"gcp,omitempty"`
+	Azure	bool `json:"azure,omitempty"`
 
 	// Local hardware estimation
-	LocalHardware              bool    `json:"localHardware,omitempty"`
-	LocalTDPWatts              float64 `json:"localTdpWatts,omitempty"`
-	LocalEnergyRateKWH         float64 `json:"localEnergyRateKwh,omitempty"`
+	LocalHardware							bool		`json:"localHardware,omitempty"`
+	LocalTDPWatts							float64 `json:"localTdpWatts,omitempty"`
+	LocalEnergyRateKWH				float64 `json:"localEnergyRateKwh,omitempty"`
 	LocalHardwarePurchasePrice float64 `json:"localHardwarePurchasePrice,omitempty"`
 	LocalHardwareLifespanYears float64 `json:"localHardwareLifespanYears,omitempty"`
 }
 
 type RunRecord struct {
-	RunID          string      `json:"runId,omitempty"`
-	SubmittedAt    metav1.Time `json:"submittedAt,omitempty"`
-	CompletedAt    metav1.Time `json:"completedAt,omitempty"`
-	DurationMillis int64       `json:"durationMillis,omitempty"`
-	Status         string      `json:"status,omitempty"`
-	Error          string      `json:"error,omitempty"`
+	RunID					string			`json:"runId,omitempty"`
+	SubmittedAt		metav1.Time `json:"submittedAt,omitempty"`
+	CompletedAt		metav1.Time `json:"completedAt,omitempty"`
+	DurationMillis int64			`json:"durationMillis,omitempty"`
+	Status				string			`json:"status,omitempty"`
+	Error					string			`json:"error,omitempty"`
 	// Result contains the job output as a raw JSON string.
 	// +optional
 	Result string `json:"result,omitempty"`
 }
 
 type RuneBenchmarkStatus struct {
-	ObservedGeneration  int64              `json:"observedGeneration,omitempty"`
-	LastScheduleTime    *metav1.Time       `json:"lastScheduleTime,omitempty"`
-	LastSuccessfulTime  *metav1.Time       `json:"lastSuccessfulTime,omitempty"`
-	ConsecutiveFailures int32              `json:"consecutiveFailures,omitempty"`
-	LastRun             RunRecord          `json:"lastRun,omitempty"`
-	History             []RunRecord        `json:"history,omitempty"`
-	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration	int64							`json:"observedGeneration,omitempty"`
+	LastScheduleTime		*metav1.Time			`json:"lastScheduleTime,omitempty"`
+	LastSuccessfulTime	*metav1.Time			`json:"lastSuccessfulTime,omitempty"`
+	ConsecutiveFailures int32							`json:"consecutiveFailures,omitempty"`
+	LastRun						RunRecord					`json:"lastRun,omitempty"`
+	History						[]RunRecord				`json:"history,omitempty"`
+	Conditions					[]metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -147,10 +147,10 @@ type RuneBenchmarkStatus struct {
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 type RuneBenchmark struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta	`json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RuneBenchmarkSpec   `json:"spec,omitempty"`
+	Spec	RuneBenchmarkSpec	`json:"spec,omitempty"`
 	Status RuneBenchmarkStatus `json:"status,omitempty"`
 }
 
@@ -159,7 +159,7 @@ type RuneBenchmark struct {
 type RuneBenchmarkList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RuneBenchmark `json:"items"`
+	Items					[]RuneBenchmark `json:"items"`
 }
 
 func init() {
