@@ -174,67 +174,49 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
+	// Base fields common to all workflows
+	p := map[string]any{
+		"question":               spec.Question,
+		"model":                  spec.Model,
+		"backend_url":            spec.BackendURL,
+		"backend_type":           spec.BackendType,
+		"region":                 spec.Region,
+		"backend_warmup":         spec.BackendWarmup,
+		"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
+		"kubeconfig":             spec.Kubeconfig,
+	}
+
+	if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
+		v := spec.Provisioning.VastAI
+		p["vastai"] = true
+		p["template_hash"] = v.TemplateHash
+		p["min_dph"] = v.MinDPH
+		p["max_dph"] = v.MaxDPH
+		p["reliability"] = v.Reliability
+		p["vastai_stop_instance"] = v.StopInstance
+	} else {
+		p["vastai"] = spec.CostEstimation.VastAI
+	}
+
+	// Cloud provider cost flags
+	p["aws"] = spec.CostEstimation.AWS
+	p["gcp"] = spec.CostEstimation.GCP
+	p["azure"] = spec.CostEstimation.Azure
+
 	switch spec.Workflow {
 	case "agentic-agent":
-		p := map[string]any{
-			"question":               spec.Question,
-			"model":                  spec.Model,
-			"backend_url":            spec.BackendURL,
-			"backend_type":           spec.BackendType,
-			"backend_warmup":         spec.BackendWarmup,
-			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
-			"kubeconfig":             spec.Kubeconfig,
-		}
 		if spec.Agent != "" {
 			p["agent"] = spec.Agent
 		}
 		return p
 	case "ollama-instance", "llm-instance":
-		p := map[string]any{
-			"vastai":       false,
-			"backend_url":  spec.BackendURL,
-			"backend_type": spec.BackendType,
-		}
-		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
-			v := spec.Provisioning.VastAI
-			p["vastai"] = true
-			p["template_hash"] = v.TemplateHash
-			p["min_dph"] = v.MinDPH
-			p["max_dph"] = v.MaxDPH
-			p["reliability"] = v.Reliability
-		}
+		// These specific workflows might need a more restricted payload in core
 		return p
 	case "benchmark":
-		p := map[string]any{
-			"vastai":                 false,
-			"backend_url":            spec.BackendURL,
-			"backend_type":           spec.BackendType,
-			"question":               spec.Question,
-			"model":                  spec.Model,
-			"backend_warmup":         spec.BackendWarmup,
-			"backend_warmup_timeout": int(spec.BackendWarmupTimeoutSeconds),
-			"kubeconfig":             spec.Kubeconfig,
-			"attestation_required":   spec.AttestationRequired,
-		}
-		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
-			v := spec.Provisioning.VastAI
-			p["vastai"] = true
-			p["template_hash"] = v.TemplateHash
-			p["min_dph"] = v.MinDPH
-			p["max_dph"] = v.MaxDPH
-			p["reliability"] = v.Reliability
-			p["vastai_stop_instance"] = v.StopInstance
-		}
+		p["attestation_required"] = spec.AttestationRequired
 		return p
 	default:
-		// Unknown workflow kind — forward what we have; the API server will reject with a clear error.
-		return map[string]any{
-			"workflow":     spec.Workflow,
-			"question":     spec.Question,
-			"model":        spec.Model,
-			"backend_url":  spec.BackendURL,
-			"backend_type": spec.BackendType,
-		}
+		return p
 	}
 }
 
@@ -354,6 +336,7 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 		"local_hardware_lifespan_years": ce.LocalHardwareLifespanYears,
 		// Run context
 		"model":                      spec.Model,
+		"region":                     spec.Region,
 		"estimated_duration_seconds": int(spec.TimeoutSeconds),
 	}
 	body, err := jsonMarshal(estimatePayload)
