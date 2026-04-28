@@ -112,3 +112,30 @@ func (in *RunRecord) DeepCopyInto(out *RunRecord) {
 	in.SubmittedAt.DeepCopyInto(&out.SubmittedAt)
 	in.CompletedAt.DeepCopyInto(&out.CompletedAt)
 }
+
+func (in *RuneBenchmarkSpec) DeepCopyInto(out *RuneBenchmarkSpec) {
+	*out = *in
+	if in.Provisioning != nil {
+		in, out := &in.Provisioning, &out.Provisioning
+		*out = new(Provisioning)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.InfrastructureRef != nil {
+		in, out := &in.InfrastructureRef, &out.InfrastructureRef
+		*out = new(CrossplaneClaimRef)
+		**out = **in
+	}
+}
+
+func (in *Provisioning) DeepCopyInto(out *Provisioning) {
+	*out = *in
+	if in.VastAI != nil {
+		in, out := &in.VastAI, &out.VastAI
+		*out = new(VastAIProvisioning)
+		**out = **in
+	}
+}
+
+func (in *CrossplaneClaimRef) DeepCopyInto(out *CrossplaneClaimRef) {
+	*out = *in
+}
