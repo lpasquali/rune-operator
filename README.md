@@ -2,6 +2,11 @@
 
 Kubernetes operator for declarative RUNE job scheduling.
 
+## ✨ Latest Features
+- **Multi-Cloud Cost Safety**: Native support for AWS, GCP, and Azure pre-flight cost gates.
+- **AWS Bedrock Support**: Configurable regions for enterprise LLM backends.
+- **Enhanced Status Mapping**: Full capture of agent results and telemetry in `RunRecord`.
+
 ## 📖 Documentation
 All documentation is consolidated in the **[RUNE Documentation Site](https://lpasquali.github.io/rune-docs/)**.
 
