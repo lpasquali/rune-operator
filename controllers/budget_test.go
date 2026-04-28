@@ -208,7 +208,7 @@ func TestCheckBudgetFullCoverage(t *testing.T) {
 
 	ctx := context.Background()
 	client := http.DefaultClient
-	maxCost := 10.0
+	maxCost := resource.MustParse("10.0")
 	spec := benchv1alpha1.RuneBenchmarkSpec{
 		Budget: benchv1alpha1.Budget{
 			MaxCostUSD: &maxCost,
