@@ -197,3 +197,32 @@ func TestBudgetExtra(t *testing.T) {
 	testCheckBudget(t)
 	testGetJobStatus(t)
 }
+
+func TestCheckBudgetFullCoverage(t *testing.T) {
+	// Cover the success and error branches of checkBudget
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	client := http.DefaultClient
+	maxCost := 10.0
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Budget: benchv1alpha1.Budget{
+			MaxCostUSD: &maxCost,
+		},
+	}
+
+	err := checkBudget(ctx, server.URL, spec, client, "token")
+	if err != nil {
+		t.Fatalf("expected nil err, got %v", err)
+	}
+
+	// Invalid URL
+	err = checkBudget(ctx, "://bad", spec, client, "")
+	if err == nil {
+		t.Fatal("expected error for bad URL")
+	}
+}

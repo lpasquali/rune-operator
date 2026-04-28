@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -35,8 +36,11 @@ type managerLike interface {
 }
 
 var (
-	getConfigOrDieFn = ctrl.GetConfigOrDie
-	buildManagerFn   = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
+	getConfigOrDieFn   = ctrl.GetConfigOrDie
+	newDynamicClientFn = func(cfg *rest.Config) (dynamic.Interface, error) {
+		return dynamic.NewForConfig(cfg)
+	}
+	buildManagerFn = func(cfg *rest.Config, options ctrl.Options) (managerLike, error) {
 		return ctrl.NewManager(cfg, options)
 	}
 	newManagerFn = func(s *runtime.Scheme, metricsAddr, probeAddr, pprofAddr string, enableLeaderElection bool) (managerLike, error) {
@@ -72,10 +76,16 @@ var (
 		return reconciler.SetupWithManager(ctrlMgr)
 	}
 	setupReconcilerFn = func(mgr managerLike) error {
+		cfg := getConfigOrDieFn()
+		dynClient, err := newDynamicClientFn(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create dynamic client: %w", err)
+		}
 		return setupReconcilerWithManagerFn(&controllers.RuneBenchmarkReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Recorder: mgr.GetEventRecorderFor("rune-benchmark-controller"),
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			Recorder:      mgr.GetEventRecorderFor("rune-benchmark-controller"),
+			DynamicClient: dynClient,
 		}, mgr)
 	}
 	addClientGoSchemeFn  = clientgoscheme.AddToScheme

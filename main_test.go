@@ -12,6 +12,8 @@ import (
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
 	"github.com/lpasquali/rune-operator/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -133,7 +135,18 @@ func TestDefaultNewManagerFnUsesConfiguredOptions(t *testing.T) {
 
 func TestDefaultSetupReconcilerFnSuccessBranch(t *testing.T) {
 	oldSetup := setupReconcilerWithManagerFn
-	t.Cleanup(func() { setupReconcilerWithManagerFn = oldSetup })
+	oldConfig := getConfigOrDieFn
+	oldNewDynClient := newDynamicClientFn
+	t.Cleanup(func() {
+		setupReconcilerWithManagerFn = oldSetup
+		getConfigOrDieFn = oldConfig
+		newDynamicClientFn = oldNewDynClient
+	})
+
+	getConfigOrDieFn = func() *rest.Config { return &rest.Config{Host: "https://example.invalid"} }
+	newDynamicClientFn = func(cfg *rest.Config) (dynamic.Interface, error) {
+		return dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()), nil
+	}
 
 	called := false
 	setupReconcilerWithManagerFn = func(reconciler *controllers.RuneBenchmarkReconciler, mgr managerLike) error {
@@ -258,6 +271,18 @@ func TestMain_ExitOnRunError(t *testing.T) {
 }
 
 func TestDefaultSetupReconcilerFnTypeAssertionError(t *testing.T) {
+	oldConfig := getConfigOrDieFn
+	oldNewDynClient := newDynamicClientFn
+	t.Cleanup(func() {
+		getConfigOrDieFn = oldConfig
+		newDynamicClientFn = oldNewDynClient
+	})
+
+	getConfigOrDieFn = func() *rest.Config { return &rest.Config{Host: "https://example.invalid"} }
+	newDynamicClientFn = func(cfg *rest.Config) (dynamic.Interface, error) {
+		return dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()), nil
+	}
+
 	err := setupReconcilerFn(&fakeManager{})
 	if err == nil || !strings.Contains(err.Error(), "controller-runtime manager") {
 		t.Fatalf("expected controller-runtime manager error, got %v", err)
@@ -284,5 +309,37 @@ func TestDefaultSetupEStopFn_TypeAssertionError(t *testing.T) {
 	err := setupEStopFn(&fakeManager{}, true, "rune-estop")
 	if err == nil || !strings.Contains(err.Error(), "controller-runtime manager") {
 		t.Fatalf("expected controller-runtime manager error, got %v", err)
+	}
+}
+
+// TestNewDynamicClientFnIntegration tests the real dynamic client creation.
+// This integration test requires a valid kubeconfig (e.g., from kind).
+// It verifies that newDynamicClientFn can create a real dynamic client without stubbing.
+func TestNewDynamicClientFnIntegration(t *testing.T) {
+	// Skip if no kubeconfig is available (e.g., in minimal test environments)
+	if _, err := os.Stat(os.ExpandEnv("$HOME/.kube/config")); err != nil {
+		t.Skip("kubeconfig not found, skipping integration test (requires kind or k8s cluster)")
+	}
+
+	// Create a real config using the standard k8s client loading
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		t.Skip("failed to load kubeconfig, skipping integration test: " + err.Error())
+	}
+
+	// Call the real newDynamicClientFn (not stubbed)
+	dynClient, err := newDynamicClientFn(cfg)
+	if err != nil {
+		t.Fatalf("newDynamicClientFn failed: %v", err)
+	}
+
+	if dynClient == nil {
+		t.Fatalf("expected non-nil dynamic client")
+	}
+
+	// Verify it implements dynamic.Interface
+	_, ok := dynClient.(dynamic.Interface)
+	if !ok {
+		t.Fatalf("client does not implement dynamic.Interface")
 	}
 }
