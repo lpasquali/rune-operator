@@ -1670,3 +1670,107 @@ func TestCheckCostEstimateExactThreshold(t *testing.T) {
 		t.Fatalf("expected 0.95 to pass threshold, got %v", err)
 	}
 }
+
+func TestCheckCostEstimateFiresForGCP(t *testing.T) {
+	var gotPayload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotPayload)
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		CostEstimation: benchv1alpha1.CostEstimation{GCP: true},
+		Region:         "us-central1",
+	}
+	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if gotPayload["gcp"] != true {
+		t.Fatal("expected gcp=true")
+	}
+	if gotPayload["region"] != "us-central1" {
+		t.Fatalf("expected region=us-central1, got %v", gotPayload["region"])
+	}
+}
+
+func TestCheckCostEstimateFiresForAzure(t *testing.T) {
+	var gotPayload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotPayload)
+		_, _ = w.Write([]byte(`{"confidence_score":0.99}`))
+	}))
+	defer ts.Close()
+
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		CostEstimation: benchv1alpha1.CostEstimation{Azure: true},
+	}
+	if err := checkCostEstimate(context.Background(), ts.URL, spec, http.DefaultClient, ""); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if gotPayload["azure"] != true {
+		t.Fatal("expected azure=true")
+	}
+}
+
+func TestBuildPayloadOllamaLLMInstances(t *testing.T) {
+	for _, wf := range []string{"ollama-instance", "llm-instance"} {
+		spec := benchv1alpha1.RuneBenchmarkSpec{
+			Workflow: wf,
+			BackendURL: "http://test",
+		}
+		p := buildPayload(spec)
+		if p["backend_url"] != "http://test" {
+			t.Errorf("%s: expected backend_url", wf)
+		}
+	}
+}
+
+func TestBuildPayloadDefault(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "other",
+		Question: "q",
+	}
+	p := buildPayload(spec)
+	if p["question"] != "q" {
+		t.Fatal("expected question in default payload")
+	}
+}
+
+func TestBuildPayloadAWSEstimation(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "benchmark",
+		CostEstimation: benchv1alpha1.CostEstimation{AWS: true},
+	}
+	p := buildPayload(spec)
+	if p["aws"] != true {
+		t.Fatal("expected aws=true in payload")
+	}
+}
+
+func TestBuildPayloadWithAgent(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "agentic-agent",
+		Agent: "test-agent",
+	}
+	p := buildPayload(spec)
+	if p["agent"] != "test-agent" {
+		t.Fatal("expected agent=test-agent in payload")
+	}
+}
+
+func TestBuildPayloadWithProvisioning(t *testing.T) {
+	spec := benchv1alpha1.RuneBenchmarkSpec{
+		Workflow: "benchmark",
+		Provisioning: &benchv1alpha1.Provisioning{
+			VastAI: &benchv1alpha1.VastAIProvisioning{
+				TemplateHash: "abc",
+				MinDPH: 1.0,
+			},
+		},
+	}
+	p := buildPayload(spec)
+	if p["vastai"] != true || p["template_hash"] != "abc" || p["min_dph"] != 1.0 {
+		t.Fatal("failed to map vastai provisioning fields")
+	}
+}
