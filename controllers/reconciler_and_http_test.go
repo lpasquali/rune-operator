@@ -665,7 +665,7 @@ func TestBuildPayloadAgenticAgent(t *testing.T) {
 
 func TestBuildPayloadOllamaInstance(t *testing.T) {
 	spec := benchv1alpha1.RuneBenchmarkSpec{
-		Workflow: "ollama-instance",
+		Workflow: "llm-instance",
 		Provisioning: &benchv1alpha1.Provisioning{
 			VastAI: &benchv1alpha1.VastAIProvisioning{
 				TemplateHash: "abc123",
@@ -688,7 +688,7 @@ func TestBuildPayloadOllamaInstance(t *testing.T) {
 	}
 	for _, k := range []string{"question", "model", "kubeconfig", "vastai_stop_instance", "workflow"} {
 		if _, ok := p[k]; ok {
-			t.Fatalf("ollama-instance payload must not contain key %q", k)
+			t.Fatalf("llm-instance payload must not contain key %q", k)
 		}
 	}
 }
@@ -1048,7 +1048,7 @@ func TestBuildPayloadBackendTypeNonDefault(t *testing.T) {
 }
 
 func TestBuildPayloadBackendTypeInAllWorkflows(t *testing.T) {
-	for _, wf := range []string{"agentic-agent", "ollama-instance", "benchmark", "unknown"} {
+	for _, wf := range []string{"agentic-agent", "llm-instance", "benchmark", "unknown"} {
 		spec := benchv1alpha1.RuneBenchmarkSpec{
 			Workflow:    wf,
 			BackendType: "ollama",
@@ -1714,7 +1714,7 @@ func TestCheckCostEstimateFiresForAzure(t *testing.T) {
 }
 
 func TestBuildPayloadOllamaLLMInstances(t *testing.T) {
-	for _, wf := range []string{"ollama-instance", "llm-instance"} {
+	for _, wf := range []string{"llm-instance", "llm-instance"} {
 		spec := benchv1alpha1.RuneBenchmarkSpec{
 			Workflow: wf,
 			BackendURL: "http://test",

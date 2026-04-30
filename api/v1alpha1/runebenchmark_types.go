@@ -99,8 +99,7 @@ type VastAIProvisioning struct {
 }
 
 // CostEstimation configures the pre-flight cost gate.
-// At most one provider flag should be true. If none are set and VastAI provisioning
-// is enabled, the gate fires automatically for backward compatibility.
+// At most one provider flag should be true.
 type CostEstimation struct {
 	// Cloud providers
 	VastAI bool `json:"vastai,omitempty"`

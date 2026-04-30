@@ -164,7 +164,7 @@ spec:
                 format: int32
                 type: integer
               vastai:
-                description: Vast.ai provisioning options (ollama-instance, benchmark)
+                description: Vast.ai provisioning options (llm-instance, benchmark)
                 type: boolean
               vastaiStopInstance:
                 type: boolean

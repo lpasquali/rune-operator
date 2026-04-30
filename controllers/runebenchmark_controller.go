@@ -209,7 +209,7 @@ func buildPayload(spec benchv1alpha1.RuneBenchmarkSpec) map[string]any {
 			p["agent"] = spec.Agent
 		}
 		return p
-	case "ollama-instance", "llm-instance":
+	case "llm-instance", "llm-instance":
 		// These specific workflows might need a more restricted payload in core
 		return p
 	case "benchmark":
@@ -308,13 +308,9 @@ func checkCostEstimate(ctx context.Context, apiBase string, spec benchv1alpha1.R
 		reliability = v.Reliability
 	}
 
-	// Backward compat: if no explicit costEstimation but vastai provisioning is on, gate it
+	// If no explicit cost provider is enabled, proceed.
 	if !ce.VastAI && !ce.AWS && !ce.GCP && !ce.Azure && !ce.LocalHardware {
-		if spec.Provisioning != nil && spec.Provisioning.VastAI != nil {
-			ce.VastAI = true
-		} else {
-			return nil
-		}
+		return nil
 	}
 
 	estimatePayload := map[string]any{
