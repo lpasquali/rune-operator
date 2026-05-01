@@ -31,7 +31,7 @@ jobs:
       push: ${{ github.event_name == 'push' }}
 
   guard:
-    uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@182398cc58c0358d7cd32ab97944ed6c46107a7b
+    uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@d1d2d2863dac135812bf98b89ae6f9bef8c33e63
 
   compliance:
     needs: [security, go, container, guard]
