@@ -77,9 +77,9 @@ var (
 	}
 	setupReconcilerFn = func(mgr managerLike) error {
 		return setupReconcilerWithManagerFn(&controllers.RuneBenchmarkReconciler{
-			Client:        mgr.GetClient(),
-			Scheme:        mgr.GetScheme(),
-			Recorder:      mgr.GetEventRecorderFor("rune-benchmark-controller"),
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("rune-benchmark-controller"),
 		}, mgr)
 	}
 	addClientGoSchemeFn  = clientgoscheme.AddToScheme

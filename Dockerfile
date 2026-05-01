@@ -4,7 +4,7 @@
 # for $TARGETARCH (set by buildx --platform). CI builds amd64 + arm64 on native
 # runners; local `docker build` must not pin linux/amd64 or arm64 hosts break.
 
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 WORKDIR /workspace
 

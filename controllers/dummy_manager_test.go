@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"testing"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestSetupWithManager_Success(t *testing.T) {

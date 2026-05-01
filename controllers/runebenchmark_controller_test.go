@@ -150,11 +150,11 @@ func TestConstructJobForBenchmark(t *testing.T) {
 	assert.Contains(t, job.Name, "test-bench-")
 	assert.Equal(t, "default", job.Namespace)
 	assert.Len(t, job.Spec.Template.Spec.Containers, 1)
-	
+
 	container := job.Spec.Template.Spec.Containers[0]
 	assert.Equal(t, "benchmark", container.Name)
 	assert.Equal(t, []string{"rune", "execute", "test-workflow"}, container.Command)
-	
+
 	// Test Env vars
 	envMap := make(map[string]string)
 	for _, env := range container.Env {
@@ -301,14 +301,14 @@ func TestUpdateStatusFromJob_NoCompletionTime(t *testing.T) {
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-bench"},
 		Status: benchv1alpha1.RuneBenchmarkStatus{
-            History: []benchv1alpha1.RunRecord{
-                {RunID: "old-1"}, {RunID: "old-2"}, {RunID: "old-3"}, {RunID: "old-4"}, {RunID: "old-5"},
-                {RunID: "old-6"}, {RunID: "old-7"}, {RunID: "old-8"}, {RunID: "old-9"}, {RunID: "old-10"},
-                {RunID: "old-11"}, {RunID: "old-12"}, {RunID: "old-13"}, {RunID: "old-14"}, {RunID: "old-15"},
-                {RunID: "old-16"}, {RunID: "old-17"}, {RunID: "old-18"}, {RunID: "old-19"}, {RunID: "old-20"},
-                {RunID: "old-21"}, // This should be truncated
-            },
-        },
+			History: []benchv1alpha1.RunRecord{
+				{RunID: "old-1"}, {RunID: "old-2"}, {RunID: "old-3"}, {RunID: "old-4"}, {RunID: "old-5"},
+				{RunID: "old-6"}, {RunID: "old-7"}, {RunID: "old-8"}, {RunID: "old-9"}, {RunID: "old-10"},
+				{RunID: "old-11"}, {RunID: "old-12"}, {RunID: "old-13"}, {RunID: "old-14"}, {RunID: "old-15"},
+				{RunID: "old-16"}, {RunID: "old-17"}, {RunID: "old-18"}, {RunID: "old-19"}, {RunID: "old-20"},
+				{RunID: "old-21"}, // This should be truncated
+			},
+		},
 	}
 	now := metav1.Now()
 	job := &batchv1.Job{
@@ -327,7 +327,7 @@ func TestUpdateStatusFromJob_NoCompletionTime(t *testing.T) {
 }
 
 func TestConstructJobForBenchmark_Error(t *testing.T) {
-    // Scheme is nil, should fail SetControllerReference
+	// Scheme is nil, should fail SetControllerReference
 	r := &RuneBenchmarkReconciler{Scheme: runtime.NewScheme()}
 	obj := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-bench"},
@@ -340,11 +340,11 @@ func TestSyncActiveSchedules(t *testing.T) {
 	scheme := controllersTestScheme(t)
 	obj1 := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bench-1", Namespace: "default"},
-		Spec: benchv1alpha1.RuneBenchmarkSpec{Suspend: false},
+		Spec:       benchv1alpha1.RuneBenchmarkSpec{Suspend: false},
 	}
 	obj2 := &benchv1alpha1.RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bench-2", Namespace: "default"},
-		Spec: benchv1alpha1.RuneBenchmarkSpec{Suspend: true},
+		Spec:       benchv1alpha1.RuneBenchmarkSpec{Suspend: true},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(obj1, obj2).Build()
 	r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
@@ -391,18 +391,18 @@ func TestReconcile(t *testing.T) {
 		assert.Equal(t, ctrl.Result{}, res)
 	})
 
-    t.Run("PanicRecovery", func(t *testing.T) {
-        // nil client will panic
-        r := &RuneBenchmarkReconciler{Client: nil, Scheme: scheme}
+	t.Run("PanicRecovery", func(t *testing.T) {
+		// nil client will panic
+		r := &RuneBenchmarkReconciler{Client: nil, Scheme: scheme}
 		_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "non-existent"}})
-        assert.Error(t, err)
-        assert.Contains(t, err.Error(), "panic recovered")
-    })
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "panic recovered")
+	})
 
 	t.Run("Suspended", func(t *testing.T) {
 		obj := &benchv1alpha1.RuneBenchmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bench-suspended", Namespace: "default"},
-			Spec: benchv1alpha1.RuneBenchmarkSpec{Suspend: true},
+			Spec:       benchv1alpha1.RuneBenchmarkSpec{Suspend: true},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(obj).Build()
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
@@ -430,80 +430,80 @@ func TestReconcile(t *testing.T) {
 		assert.Equal(t, time.Second*30, res.RequeueAfter)
 	})
 
-    t.Run("ActiveJobs", func(t *testing.T) {
-        obj := &benchv1alpha1.RuneBenchmark{
+	t.Run("ActiveJobs", func(t *testing.T) {
+		obj := &benchv1alpha1.RuneBenchmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bench-active", Namespace: "default", UID: "uid-1"},
 		}
-        job := &batchv1.Job{
-            ObjectMeta: metav1.ObjectMeta{
-                Name: "job-1", 
-                Namespace: "default",
-                OwnerReferences: []metav1.OwnerReference{
-                    {UID: "uid-1", Controller: ptrBool(true)},
-                },
-            },
-        }
-        cl := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(obj, job).Build()
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job-1",
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{UID: "uid-1", Controller: ptrBool(true)},
+				},
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(obj, job).Build()
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
 		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "bench-active", Namespace: "default"}})
 		assert.NoError(t, err)
 		assert.Equal(t, ctrl.Result{}, res) // returns early because active jobs > 0
-    })
+	})
 
-    t.Run("NeedRun_NoLatestJob", func(t *testing.T) {
-        obj := &benchv1alpha1.RuneBenchmark{
+	t.Run("NeedRun_NoLatestJob", func(t *testing.T) {
+		obj := &benchv1alpha1.RuneBenchmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bench-run", Namespace: "default", UID: "uid-1"},
-            Spec: benchv1alpha1.RuneBenchmarkSpec{Schedule: "*/1 * * * *"},
+			Spec:       benchv1alpha1.RuneBenchmarkSpec{Schedule: "*/1 * * * *"},
 		}
-        cl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj).Build()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj).Build()
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
 		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "bench-run", Namespace: "default"}})
 		assert.NoError(t, err)
 		assert.Equal(t, ctrl.Result{}, res)
-        
-        // Job should be created
-        var jobs batchv1.JobList
-        err = cl.List(context.Background(), &jobs)
-        assert.NoError(t, err)
-        assert.Len(t, jobs.Items, 1)
-    })
 
-    t.Run("LatestJob_Finished_NeedRun_Schedule", func(t *testing.T) {
-        now := metav1.Now()
-        past := metav1.NewTime(now.Add(-2 * time.Minute))
-        
-        obj := &benchv1alpha1.RuneBenchmark{
+		// Job should be created
+		var jobs batchv1.JobList
+		err = cl.List(context.Background(), &jobs)
+		assert.NoError(t, err)
+		assert.Len(t, jobs.Items, 1)
+	})
+
+	t.Run("LatestJob_Finished_NeedRun_Schedule", func(t *testing.T) {
+		now := metav1.Now()
+		past := metav1.NewTime(now.Add(-2 * time.Minute))
+
+		obj := &benchv1alpha1.RuneBenchmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bench-run-sched", Namespace: "default", UID: "uid-1"},
-            Spec: benchv1alpha1.RuneBenchmarkSpec{Schedule: "*/1 * * * *"},
-            Status: benchv1alpha1.RuneBenchmarkStatus{
-                LastScheduleTime: &past,
-                ObservedGeneration: 1, // match generation
-            },
-            // setting generation
+			Spec:       benchv1alpha1.RuneBenchmarkSpec{Schedule: "*/1 * * * *"},
+			Status: benchv1alpha1.RuneBenchmarkStatus{
+				LastScheduleTime:   &past,
+				ObservedGeneration: 1, // match generation
+			},
+			// setting generation
 		}
-        obj.Generation = 1
-        
-        job := &batchv1.Job{
-            ObjectMeta: metav1.ObjectMeta{
-                Name: "job-1", 
-                Namespace: "default",
-                CreationTimestamp: past,
-                OwnerReferences: []metav1.OwnerReference{
-                    {UID: "uid-1", Controller: ptrBool(true)},
-                },
-            },
-            Status: batchv1.JobStatus{
-                StartTime: &past,
-                CompletionTime: &past,
-                Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}},
-            },
-        }
-        cl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj, job).Build()
+		obj.Generation = 1
+
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "job-1",
+				Namespace:         "default",
+				CreationTimestamp: past,
+				OwnerReferences: []metav1.OwnerReference{
+					{UID: "uid-1", Controller: ptrBool(true)},
+				},
+			},
+			Status: batchv1.JobStatus{
+				StartTime:      &past,
+				CompletionTime: &past,
+				Conditions:     []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}},
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj, job).Build()
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
 		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "bench-run-sched", Namespace: "default"}})
 		assert.NoError(t, err)
 		assert.Equal(t, ctrl.Result{}, res)
-    })
+	})
 }
 
 func ptrBool(b bool) *bool { return &b }
