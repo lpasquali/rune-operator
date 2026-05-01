@@ -1,0 +1,740 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>controllers: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/lpasquali/rune-operator/controllers/estop_controller.go (96.8%)</option>
+				
+				<option value="file1">github.com/lpasquali/rune-operator/controllers/runebenchmark_controller.go (95.7%)</option>
+				
+				<option value="file2">github.com/lpasquali/rune-operator/controllers/test_manager.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// SPDX-License-Identifier: Apache-2.0
+package controllers
+
+import (
+        "context"
+        "fmt"
+
+        corev1 "k8s.io/api/core/v1"
+        apierrors "k8s.io/apimachinery/pkg/api/errors"
+        "k8s.io/apimachinery/pkg/runtime"
+        ctrl "sigs.k8s.io/controller-runtime"
+        "sigs.k8s.io/controller-runtime/pkg/builder"
+        "sigs.k8s.io/controller-runtime/pkg/client"
+        "sigs.k8s.io/controller-runtime/pkg/log"
+        "sigs.k8s.io/controller-runtime/pkg/predicate"
+
+        benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
+)
+
+const (
+        // RamScrubAnnotation is placed on RuneBenchmark resources and pods when an
+        // E-Stop is triggered.  Actual memory scrubbing is delegated to the kubelet
+        // via normal pod-termination guarantees; this annotation is the signal.
+        RamScrubAnnotation = "rune.io/ram-scrub-on-estop"
+
+        // DefaultEStopConfigMapName is the name of the ConfigMap watched for an
+        // E-Stop signal.  Set key "triggered" to "true" to activate.
+        DefaultEStopConfigMapName = "rune-estop"
+)
+
+// setupEStopControllerWithManager is injectable for unit tests; production code
+// sets up a name-filtered watch on ConfigMaps.
+var setupEStopControllerWithManager = func(mgr ctrl.Manager, r *EStopReconciler, estopName string) error <span class="cov0" title="0">{
+        return ctrl.NewControllerManagedBy(mgr).
+                For(&amp;corev1.ConfigMap{}, builder.WithPredicates(
+                        predicate.NewPredicateFuncs(func(obj client.Object) bool </span><span class="cov0" title="0">{
+                                return obj.GetName() == estopName
+                        }</span>),
+                )).
+                Complete(r)
+}
+
+// EStopReconciler watches a single named ConfigMap for an E-Stop signal.  When
+// the ConfigMap's "triggered" key is "true" the reconciler:
+//  1. Suspends every RuneBenchmark in the cluster.
+//  2. Annotates pods in RuneBenchmark namespaces with RamScrubAnnotation so
+//     that external controllers can schedule a RAM-scrub cycle.
+type EStopReconciler struct {
+        client.Client
+        Scheme             *runtime.Scheme
+        EStopConfigMapName string // defaults to DefaultEStopConfigMapName when empty
+        // EStopNamespace restricts the ConfigMap watch to one namespace.
+        // Empty string means any namespace (cluster-scoped watch).
+        EStopNamespace string
+}
+
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;patch
+// +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks,verbs=get;list;update;patch
+
+func (r *EStopReconciler) SetupWithManager(mgr ctrl.Manager) error <span class="cov8" title="1">{
+        if mgr == nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("manager is nil")
+        }</span>
+        <span class="cov8" title="1">return setupEStopControllerWithManager(mgr, r, r.estopName())</span>
+}
+
+func (r *EStopReconciler) estopName() string <span class="cov8" title="1">{
+        if r.EStopConfigMapName != "" </span><span class="cov8" title="1">{
+                return r.EStopConfigMapName
+        }</span>
+        <span class="cov8" title="1">return DefaultEStopConfigMapName</span>
+}
+
+func (r *EStopReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) <span class="cov8" title="1">{
+        logger := log.FromContext(ctx)
+
+        // Guard against ConfigMaps that slipped past the predicate (e.g. during
+        // re-list on startup) or wrong-namespace triggers.
+        if req.Name != r.estopName() </span><span class="cov8" title="1">{
+                return ctrl.Result{}, nil
+        }</span>
+        <span class="cov8" title="1">if r.EStopNamespace != "" &amp;&amp; req.Namespace != r.EStopNamespace </span><span class="cov8" title="1">{
+                return ctrl.Result{}, nil
+        }</span>
+
+        <span class="cov8" title="1">cm := &amp;corev1.ConfigMap{}
+        if err := r.Get(ctx, req.NamespacedName, cm); err != nil </span><span class="cov8" title="1">{
+                if apierrors.IsNotFound(err) </span><span class="cov8" title="1">{
+                        return ctrl.Result{}, nil
+                }</span>
+                <span class="cov8" title="1">return ctrl.Result{}, err</span>
+        }
+
+        <span class="cov8" title="1">if cm.Data["triggered"] != "true" </span><span class="cov8" title="1">{
+                return ctrl.Result{}, nil
+        }</span>
+
+        <span class="cov8" title="1">logger.Info("E-Stop triggered: suspending all RuneBenchmark resources and annotating pods for RAM scrub")
+
+        if err := r.suspendAllBenchmarks(ctx, logger); err != nil </span><span class="cov8" title="1">{
+                return ctrl.Result{}, err
+        }</span>
+
+        <span class="cov8" title="1">if err := r.annotatePodsForScrub(ctx, logger); err != nil </span><span class="cov8" title="1">{
+                return ctrl.Result{}, err
+        }</span>
+
+        <span class="cov8" title="1">return ctrl.Result{}, nil</span>
+}
+
+func (r *EStopReconciler) suspendAllBenchmarks(ctx context.Context, logger interface {
+        Info(string, ...any)
+        Error(error, string, ...any)
+}) error <span class="cov8" title="1">{
+        var list benchv1alpha1.RuneBenchmarkList
+        if err := r.List(ctx, &amp;list); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">for i := range list.Items </span><span class="cov8" title="1">{
+                item := &amp;list.Items[i]
+                if item.Spec.Suspend </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">item.Spec.Suspend = true
+                if item.Annotations == nil </span><span class="cov8" title="1">{
+                        item.Annotations = make(map[string]string)
+                }</span>
+                <span class="cov8" title="1">item.Annotations[RamScrubAnnotation] = "true"
+                if err := r.Update(ctx, item); err != nil </span><span class="cov8" title="1">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">logger.Info("suspended RuneBenchmark due to E-Stop", "name", item.Name, "namespace", item.Namespace)</span>
+        }
+        <span class="cov8" title="1">return nil</span>
+}
+
+// annotatePodsForScrub annotates pods that live in the same namespaces as
+// RuneBenchmark resources.  Using Patch avoids resourceVersion conflicts
+// common with Update on frequently-mutating Pod objects.
+func (r *EStopReconciler) annotatePodsForScrub(ctx context.Context, logger interface {
+        Info(string, ...any)
+        Error(error, string, ...any)
+}) error <span class="cov8" title="1">{
+        var benchmarkList benchv1alpha1.RuneBenchmarkList
+        if err := r.List(ctx, &amp;benchmarkList); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        // Collect the set of namespaces that host RuneBenchmarks.
+        <span class="cov8" title="1">namespaces := make(map[string]struct{})
+        for _, item := range benchmarkList.Items </span><span class="cov8" title="1">{
+                namespaces[item.Namespace] = struct{}{}
+        }</span>
+
+        <span class="cov8" title="1">for ns := range namespaces </span><span class="cov8" title="1">{
+                var podList corev1.PodList
+                if err := r.List(ctx, &amp;podList, client.InNamespace(ns)); err != nil </span><span class="cov8" title="1">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">for i := range podList.Items </span><span class="cov8" title="1">{
+                        pod := &amp;podList.Items[i]
+                        if pod.Annotations != nil &amp;&amp; pod.Annotations[RamScrubAnnotation] == "true" </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">base := pod.DeepCopy()
+                        if pod.Annotations == nil </span><span class="cov8" title="1">{
+                                pod.Annotations = make(map[string]string)
+                        }</span>
+                        <span class="cov8" title="1">pod.Annotations[RamScrubAnnotation] = "true"
+                        if err := r.Patch(ctx, pod, client.MergeFrom(base)); err != nil </span><span class="cov8" title="1">{
+                                // Log but continue — a single pod failure should not block others.
+                                logger.Error(err, "failed to annotate pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
+                        }</span> else<span class="cov8" title="1"> {
+                                logger.Info("annotated pod for RAM scrub", "name", pod.Name, "namespace", pod.Namespace)
+                        }</span>
+                }
+        }
+        <span class="cov8" title="1">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">// SPDX-License-Identifier: Apache-2.0
+package controllers
+
+import (
+        "context"
+        "fmt"
+        "runtime/debug"
+        "strings"
+        "time"
+
+        "github.com/robfig/cron/v3"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        batchv1 "k8s.io/api/batch/v1"
+        corev1 "k8s.io/api/core/v1"
+        apierrors "k8s.io/apimachinery/pkg/api/errors"
+        metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+        "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+        "k8s.io/apimachinery/pkg/runtime"
+        "k8s.io/apimachinery/pkg/runtime/schema"
+        "k8s.io/apimachinery/pkg/types"
+        "k8s.io/client-go/tools/record"
+        ctrl "sigs.k8s.io/controller-runtime"
+        "sigs.k8s.io/controller-runtime/pkg/client"
+        "sigs.k8s.io/controller-runtime/pkg/log"
+
+        benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
+        "github.com/lpasquali/rune-operator/internal/metrics"
+)
+
+type RuneBenchmarkReconciler struct {
+        client.Client
+        Scheme   *runtime.Scheme
+        Recorder record.EventRecorder
+}
+
+// +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=bench.rune.ai,resources=runebenchmarks/finalizers,verbs=update
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
+// +kubebuilder:rbac:groups=database.infra.rune.ai,resources=runedatabases;xrunedatabases,verbs=get;list;watch
+// +kubebuilder:rbac:groups=storage.infra.rune.ai,resources=runeobjectstores;xruneobjectstores,verbs=get;list;watch
+
+func (r *RuneBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error <span class="cov8" title="1">{
+        if mgr == nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("manager is nil")
+        }</span>
+        <span class="cov8" title="1">r.Recorder = mgr.GetEventRecorderFor("rune-benchmark-controller")
+        return ctrl.NewControllerManagedBy(mgr).
+                For(&amp;benchv1alpha1.RuneBenchmark{}).
+                Owns(&amp;batchv1.Job{}).
+                Complete(r)</span>
+}
+
+func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) <span class="cov8" title="1">{
+        tracer := otel.Tracer("rune-operator/reconciler")
+        ctx, span := tracer.Start(ctx, "RuneBenchmarkReconcile")
+        defer span.End()
+
+        defer func() </span><span class="cov8" title="1">{
+                if recovered := recover(); recovered != nil </span><span class="cov8" title="1">{
+                        stack := string(debug.Stack())
+                        retErr = fmt.Errorf("panic recovered: %v", recovered)
+                        log.FromContext(ctx).Error(retErr, "panic in reconcile", "stack", stack)
+                        metrics.ReconcileTotal.WithLabelValues("panic").Inc()
+                }</span>
+        }()
+
+        <span class="cov8" title="1">logger := log.FromContext(ctx)
+        obj := &amp;benchv1alpha1.RuneBenchmark{}
+        if err := r.Get(ctx, req.NamespacedName, obj); err != nil </span><span class="cov8" title="1">{
+                if apierrors.IsNotFound(err) </span><span class="cov8" title="1">{
+                        metrics.ReconcileTotal.WithLabelValues("not_found").Inc()
+                        if syncErr := r.syncActiveSchedules(ctx); syncErr != nil </span><span class="cov8" title="1">{
+                                logger.Error(syncErr, "failed to refresh active schedule metric")
+                        }</span>
+                        <span class="cov8" title="1">return ctrl.Result{}, nil</span>
+                }
+                <span class="cov8" title="1">metrics.ReconcileTotal.WithLabelValues("get_error").Inc()
+                return ctrl.Result{}, err</span>
+        }
+        <span class="cov8" title="1">if err := r.syncActiveSchedules(ctx); err != nil </span><span class="cov8" title="1">{
+                logger.Error(err, "failed to refresh active schedule metric")
+        }</span>
+
+        <span class="cov8" title="1">span.SetAttributes(
+                attribute.String("resource.name", obj.Name),
+                attribute.String("resource.namespace", obj.Namespace),
+                attribute.String("workflow", obj.Spec.Workflow),
+        )
+
+        if obj.Spec.Suspend </span><span class="cov8" title="1">{
+                metrics.ReconcileTotal.WithLabelValues("suspended").Inc()
+                return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+        }</span>
+
+        <span class="cov8" title="1">if ready, reason, infraErr := r.checkInfrastructureRef(ctx, obj); infraErr != nil </span><span class="cov8" title="1">{
+                metrics.ReconcileTotal.WithLabelValues("infra_get_error").Inc()
+                r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+                logger.Error(infraErr, "infrastructureRef lookup failed", "reason", reason)
+                return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+        }</span> else<span class="cov8" title="1"> if !ready </span><span class="cov0" title="0">{
+                metrics.ReconcileTotal.WithLabelValues("infra_not_ready").Inc()
+                r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+                logger.Info("infrastructureRef not ready; requeuing", "reason", reason)
+                return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+        }</span>
+
+        <span class="cov8" title="1">now := metav1.Now()
+
+        // Find child jobs
+        var childJobs batchv1.JobList
+        if err := r.List(ctx, &amp;childJobs, client.InNamespace(req.Namespace)); err != nil </span><span class="cov8" title="1">{
+                logger.Error(err, "unable to list child Jobs")
+                return ctrl.Result{}, err
+        }</span>
+
+        <span class="cov8" title="1">var activeJobs []*batchv1.Job
+        var latestJob *batchv1.Job
+        for i := range childJobs.Items </span><span class="cov8" title="1">{
+                job := &amp;childJobs.Items[i]
+                // verify owner ref
+                isOwner := false
+                for _, ref := range job.OwnerReferences </span><span class="cov8" title="1">{
+                        if ref.Controller != nil &amp;&amp; *ref.Controller &amp;&amp; ref.UID == obj.UID </span><span class="cov8" title="1">{
+                                isOwner = true
+                                break</span>
+                        }
+                }
+                <span class="cov8" title="1">if !isOwner </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">if latestJob == nil || job.CreationTimestamp.After(latestJob.CreationTimestamp.Time) </span><span class="cov8" title="1">{
+                        latestJob = job
+                }</span>
+                <span class="cov8" title="1">if !isJobFinished(job) </span><span class="cov8" title="1">{
+                        activeJobs = append(activeJobs, job)
+                }</span>
+        }
+
+        <span class="cov8" title="1">if len(activeJobs) &gt; 0 </span><span class="cov8" title="1">{
+                return ctrl.Result{}, nil
+        }</span>
+
+        <span class="cov8" title="1">requeueAfter := 10 * time.Minute
+        if strings.TrimSpace(obj.Spec.Schedule) != "" </span><span class="cov8" title="1">{
+                next, schedErr := nextFromCron(obj.Spec.Schedule, now.Time)
+                if schedErr == nil </span><span class="cov8" title="1">{
+                        requeueAfter = time.Until(next)
+                }</span>
+        }
+
+        <span class="cov8" title="1">needRun := false
+        if obj.Status.ObservedGeneration != obj.Generation </span><span class="cov0" title="0">{
+                needRun = true
+        }</span> else<span class="cov8" title="1"> if latestJob != nil &amp;&amp; strings.TrimSpace(obj.Spec.Schedule) != "" </span><span class="cov8" title="1">{
+                if obj.Status.LastScheduleTime != nil </span><span class="cov8" title="1">{
+                        nextRun, err := nextFromCron(obj.Spec.Schedule, obj.Status.LastScheduleTime.Time)
+                        if err == nil &amp;&amp; now.Time.After(nextRun) </span><span class="cov8" title="1">{
+                                needRun = true
+                        }</span>
+                }
+        } else<span class="cov8" title="1"> if latestJob == nil </span><span class="cov8" title="1">{
+                needRun = true
+        }</span>
+
+        <span class="cov8" title="1">if latestJob != nil </span><span class="cov8" title="1">{
+                statusChanged := updateStatusFromJob(obj, latestJob)
+                if statusChanged </span><span class="cov8" title="1">{
+                        if err := r.Status().Update(ctx, obj); err != nil </span><span class="cov8" title="1">{
+                                logger.Error(err, "unable to update RuneBenchmark status")
+                                return ctrl.Result{}, err
+                        }</span>
+                        <span class="cov8" title="1">return ctrl.Result{}, nil</span>
+                }
+        }
+
+        <span class="cov8" title="1">if needRun </span><span class="cov8" title="1">{
+                job, err := r.constructJobForBenchmark(obj)
+                if err != nil </span><span class="cov0" title="0">{
+                        logger.Error(err, "unable to construct job")
+                        return ctrl.Result{}, err
+                }</span>
+
+                <span class="cov8" title="1">if err := r.Create(ctx, job); err != nil </span><span class="cov8" title="1">{
+                        logger.Error(err, "unable to create Job for RuneBenchmark", "job", job.Name)
+                        metrics.ReconcileTotal.WithLabelValues("error").Inc()
+                        return ctrl.Result{}, err
+                }</span>
+
+                <span class="cov8" title="1">metrics.ReconcileTotal.WithLabelValues("job_created").Inc()
+
+                obj.Status.ObservedGeneration = obj.Generation
+                obj.Status.LastScheduleTime = &amp;now
+                if err := r.Status().Update(ctx, obj); err != nil </span><span class="cov8" title="1">{
+                        logger.Error(err, "unable to update RuneBenchmark status")
+                        return ctrl.Result{}, err
+                }</span>
+
+                <span class="cov8" title="1">return ctrl.Result{}, nil</span>
+        }
+
+        <span class="cov0" title="0">return ctrl.Result{RequeueAfter: requeueAfter}, nil</span>
+}
+
+func (r *RuneBenchmarkReconciler) constructJobForBenchmark(obj *benchv1alpha1.RuneBenchmark) (*batchv1.Job, error) <span class="cov8" title="1">{
+        name := fmt.Sprintf("%s-%d", obj.Name, time.Now().Unix())
+        if len(name) &gt; 63 </span><span class="cov8" title="1">{
+                name = name[:63]
+        }</span>
+        <span class="cov8" title="1">job := &amp;batchv1.Job{
+                ObjectMeta: metav1.ObjectMeta{
+                        Name:      name,
+                        Namespace: obj.Namespace,
+                        Labels: map[string]string{
+                                "bench.rune.ai/benchmark": obj.Name,
+                        },
+                },
+                Spec: batchv1.JobSpec{
+                        Template: corev1.PodTemplateSpec{
+                                ObjectMeta: metav1.ObjectMeta{
+                                        Labels: map[string]string{
+                                                "bench.rune.ai/benchmark": obj.Name,
+                                        },
+                                },
+                                Spec: corev1.PodSpec{
+                                        RestartPolicy: corev1.RestartPolicyNever,
+                                        Containers: []corev1.Container{
+                                                {
+                                                        Name:    "benchmark",
+                                                        Image:   "ghcr.io/lpasquali/rune:latest",
+                                                        Command: []string{"rune", "execute", obj.Spec.Workflow},
+                                                        Env: []corev1.EnvVar{
+                                                                {Name: "RUNE_API_BASE_URL", Value: obj.Spec.APIBaseURL},
+                                                                {Name: "RUNE_TENANT", Value: obj.Spec.Tenant},
+                                                                {Name: "RUNE_MODEL", Value: obj.Spec.Model},
+                                                                {Name: "RUNE_BACKEND_URL", Value: obj.Spec.BackendURL},
+                                                                {Name: "RUNE_BACKEND_TYPE", Value: obj.Spec.BackendType},
+                                                                {Name: "RUNE_REGION", Value: obj.Spec.Region},
+                                                        },
+                                                },
+                                        },
+                                },
+                        },
+                },
+        }
+
+        if obj.Spec.APITokenSecretRef != "" </span><span class="cov8" title="1">{
+                parts := strings.Split(obj.Spec.APITokenSecretRef, "/")
+                secretName := parts[0]
+                if len(parts) == 2 </span><span class="cov8" title="1">{
+                        secretName = parts[1]
+                }</span>
+                <span class="cov8" title="1">job.Spec.Template.Spec.Containers[0].Env = append(job.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+                        Name: "RUNE_API_TOKEN",
+                        ValueFrom: &amp;corev1.EnvVarSource{
+                                SecretKeyRef: &amp;corev1.SecretKeySelector{
+                                        LocalObjectReference: corev1.LocalObjectReference{
+                                                Name: secretName,
+                                        },
+                                        Key: "token",
+                                },
+                        },
+                })</span>
+        }
+
+        <span class="cov8" title="1">if err := ctrl.SetControllerReference(obj, job, r.Scheme); err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return job, nil</span>
+}
+
+func isJobFinished(job *batchv1.Job) bool <span class="cov8" title="1">{
+        for _, c := range job.Status.Conditions </span><span class="cov8" title="1">{
+                if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) &amp;&amp; c.Status == corev1.ConditionTrue </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+func updateStatusFromJob(obj *benchv1alpha1.RuneBenchmark, job *batchv1.Job) bool <span class="cov8" title="1">{
+        changed := false
+
+        if job.Status.StartTime == nil </span><span class="cov8" title="1">{
+                return changed
+        }</span>
+
+        <span class="cov8" title="1">finished := isJobFinished(job)
+        var conditionType batchv1.JobConditionType
+        for _, c := range job.Status.Conditions </span><span class="cov8" title="1">{
+                if c.Status == corev1.ConditionTrue </span><span class="cov8" title="1">{
+                        conditionType = c.Type
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">runRecord := benchv1alpha1.RunRecord{
+                RunID:       job.Name,
+                SubmittedAt: *job.Status.StartTime,
+        }
+
+        if finished </span><span class="cov8" title="1">{
+                if job.Status.CompletionTime != nil </span><span class="cov8" title="1">{
+                        runRecord.CompletedAt = *job.Status.CompletionTime
+                        runRecord.DurationMillis = job.Status.CompletionTime.Sub(job.Status.StartTime.Time).Milliseconds()
+                }</span> else<span class="cov8" title="1"> {
+                        now := metav1.Now()
+                        runRecord.CompletedAt = now
+                        runRecord.DurationMillis = now.Sub(job.Status.StartTime.Time).Milliseconds()
+                }</span>
+
+                <span class="cov8" title="1">if conditionType == batchv1.JobComplete </span><span class="cov8" title="1">{
+                        runRecord.Status = "succeeded"
+                }</span> else<span class="cov8" title="1"> {
+                        runRecord.Status = "failed"
+                        runRecord.Error = "Job failed"
+                }</span>
+        } else<span class="cov8" title="1"> {
+                runRecord.Status = "running"
+        }</span>
+
+        <span class="cov8" title="1">if obj.Status.LastRun.RunID != runRecord.RunID || obj.Status.LastRun.Status != runRecord.Status </span><span class="cov8" title="1">{
+                obj.Status.LastRun = runRecord
+
+                if finished </span><span class="cov8" title="1">{
+                        if len(obj.Status.History) &gt; 0 &amp;&amp; obj.Status.History[0].RunID == runRecord.RunID </span><span class="cov8" title="1">{
+                                obj.Status.History[0] = runRecord
+                        }</span> else<span class="cov8" title="1"> {
+                                obj.Status.History = append([]benchv1alpha1.RunRecord{runRecord}, obj.Status.History...)
+                                if len(obj.Status.History) &gt; 20 </span><span class="cov8" title="1">{
+                                        obj.Status.History = obj.Status.History[:20]
+                                }</span>
+                        }
+
+                        <span class="cov8" title="1">if conditionType == batchv1.JobFailed </span><span class="cov8" title="1">{
+                                obj.Status.ConsecutiveFailures++
+                                obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionFalse, "RunFailed", "Job failed", obj.Generation))
+                        }</span> else<span class="cov8" title="1"> if conditionType == batchv1.JobComplete </span><span class="cov8" title="1">{
+                                obj.Status.ConsecutiveFailures = 0
+                                now := metav1.Now()
+                                obj.Status.LastSuccessfulTime = &amp;now
+                                obj.Status.Conditions = upsertCondition(obj.Status.Conditions, benchv1alpha1.ConditionReady(metav1.ConditionTrue, "RunSucceeded", "workflow run succeeded", obj.Generation))
+                        }</span>
+                }
+                <span class="cov8" title="1">changed = true</span>
+        }
+
+        <span class="cov8" title="1">return changed</span>
+}
+
+func (r *RuneBenchmarkReconciler) syncActiveSchedules(ctx context.Context) error <span class="cov8" title="1">{
+        var list benchv1alpha1.RuneBenchmarkList
+        if err := r.List(ctx, &amp;list); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">active := 0
+        for _, item := range list.Items </span><span class="cov8" title="1">{
+                if !item.Spec.Suspend </span><span class="cov8" title="1">{
+                        active++
+                }</span>
+        }
+        <span class="cov8" title="1">metrics.ActiveSchedules.Set(float64(active))
+        return nil</span>
+}
+
+func upsertCondition(conditions []metav1.Condition, cond metav1.Condition) []metav1.Condition <span class="cov8" title="1">{
+        for i := range conditions </span><span class="cov8" title="1">{
+                if conditions[i].Type == cond.Type </span><span class="cov8" title="1">{
+                        conditions[i] = cond
+                        return conditions
+                }</span>
+        }
+        <span class="cov8" title="1">return append(conditions, cond)</span>
+}
+
+func nextFromCron(spec string, from time.Time) (time.Time, error) <span class="cov8" title="1">{
+        parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+        schedule, err := parser.Parse(spec)
+        if err != nil </span><span class="cov8" title="1">{
+                return time.Time{}, err
+        }</span>
+        <span class="cov8" title="1">return schedule.Next(from), nil</span>
+}
+
+func (r *RuneBenchmarkReconciler) checkInfrastructureRef(ctx context.Context, obj *benchv1alpha1.RuneBenchmark) (bool, string, error) <span class="cov8" title="1">{
+        ref := obj.Spec.InfrastructureRef
+        if ref == nil </span><span class="cov8" title="1">{
+                return true, "", nil
+        }</span>
+        <span class="cov8" title="1">if ref.APIVersion == "" || ref.Kind == "" || ref.Name == "" </span><span class="cov8" title="1">{
+                return false, "infrastructureRef must set apiVersion, kind, and name", nil
+        }</span>
+        <span class="cov8" title="1">gv, err := schema.ParseGroupVersion(ref.APIVersion)
+        if err != nil </span><span class="cov8" title="1">{
+                return false, fmt.Sprintf("invalid infrastructureRef apiVersion %q: %v", ref.APIVersion, err), err
+        }</span>
+        <span class="cov8" title="1">u := &amp;unstructured.Unstructured{}
+        u.SetGroupVersionKind(gv.WithKind(ref.Kind))
+        ns := ref.Namespace
+        if ns == "" </span><span class="cov8" title="1">{
+                ns = obj.Namespace
+        }</span>
+        <span class="cov8" title="1">if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: ref.Name}, u); err != nil </span><span class="cov8" title="1">{
+                return false, fmt.Sprintf("cannot fetch infrastructureRef %s/%s: %v", ref.Kind, ref.Name, err), err
+        }</span>
+        <span class="cov8" title="1">synced, ready := infrastructureConditions(u)
+        if !synced || !ready </span><span class="cov8" title="1">{
+                return false, fmt.Sprintf(
+                        "infrastructureRef %s %s/%s not ready (Synced=%v Ready=%v)",
+                        ref.Kind, ns, ref.Name, synced, ready,
+                ), nil
+        }</span>
+        <span class="cov8" title="1">return true, "", nil</span>
+}
+
+func infrastructureConditions(u *unstructured.Unstructured) (bool, bool) <span class="cov8" title="1">{
+        conds, found, err := unstructured.NestedSlice(u.Object, "status", "conditions")
+        if err != nil || !found </span><span class="cov8" title="1">{
+                return false, false
+        }</span>
+        <span class="cov8" title="1">synced, ready := false, false
+        for _, c := range conds </span><span class="cov8" title="1">{
+                m, ok := c.(map[string]interface{})
+                if !ok </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">t, _ := m["type"].(string)
+                s, _ := m["status"].(string)
+                switch t </span>{
+                case "Synced":<span class="cov8" title="1">
+                        synced = s == "True"</span>
+                case "Ready":<span class="cov8" title="1">
+                        ready = s == "True"</span>
+                }
+        }
+        <span class="cov8" title="1">return synced, ready</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package controllers
+import (
+        "k8s.io/client-go/rest"
+        ctrl "sigs.k8s.io/controller-runtime"
+)
+func buildTestManager() (ctrl.Manager, error) <span class="cov0" title="0">{
+        return ctrl.NewManager(&amp;rest.Config{}, ctrl.Options{})
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
