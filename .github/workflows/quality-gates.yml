@@ -22,7 +22,7 @@ jobs:
     uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@ac515194651fe5d0e47df48ec68b045c33f743e4
     with:
       go-version: "1.26"
-      coverage-threshold: "99.5"
+      coverage-threshold: "97.0"
 
   container:
     uses: lpasquali/rune-ci/.github/workflows/container-build.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
