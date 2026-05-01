@@ -11,7 +11,7 @@ import (
 func TestDeepCopy(t *testing.T) {
 	q := resource.MustParse("100")
 	now := metav1.Now()
-	
+
 	benchmark := &RuneBenchmark{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-benchmark",
@@ -67,12 +67,12 @@ func TestDeepCopy(t *testing.T) {
 	if len(copiedList.Items) != 1 {
 		t.Error("Expected 1 item in list")
 	}
-	
+
 	copiedListObj := list.DeepCopyObject()
 	if copiedListObj == nil {
 		t.Error("DeepCopyObject returned nil for list")
 	}
-	
+
 	var nilBenchmark *RuneBenchmark
 	if nilBenchmark.DeepCopy() != nil {
 		t.Error("Expected nil from DeepCopy of nil RuneBenchmark")
@@ -80,7 +80,7 @@ func TestDeepCopy(t *testing.T) {
 	if nilBenchmark.DeepCopyObject() != nil {
 		t.Error("Expected nil from DeepCopyObject of nil RuneBenchmark")
 	}
-	
+
 	var nilList *RuneBenchmarkList
 	if nilList.DeepCopy() != nil {
 		t.Error("Expected nil from DeepCopy of nil RuneBenchmarkList")
@@ -88,7 +88,7 @@ func TestDeepCopy(t *testing.T) {
 	if nilList.DeepCopyObject() != nil {
 		t.Error("Expected nil from DeepCopyObject of nil RuneBenchmarkList")
 	}
-	
+
 	var nilSpec *RuneBenchmarkSpec
 	if nilSpec.DeepCopy() != nil {
 		t.Error("Expected nil from DeepCopy of nil RuneBenchmarkSpec")

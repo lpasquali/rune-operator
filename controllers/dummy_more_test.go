@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
+	"github.com/stretchr/testify/assert"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -90,10 +90,10 @@ func TestReconcile_AdditionalCoverage(t *testing.T) {
 				Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}},
 			},
 		}
-		
+
 		fakeCl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj, job).Build()
 		cl := &errorClient{
-			Client: fakeCl,
+			Client:          fakeCl,
 			errStatusUpdate: errors.New("mock update error on changed status"),
 		}
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
@@ -109,10 +109,10 @@ func TestReconcile_AdditionalCoverage(t *testing.T) {
 				ObservedGeneration: 1,
 			},
 		}
-		
+
 		fakeCl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&benchv1alpha1.RuneBenchmark{}).WithRuntimeObjects(obj).Build()
 		cl := &errorClient{
-			Client: fakeCl,
+			Client:          fakeCl,
 			errStatusUpdate: errors.New("mock update error after create"),
 		}
 		r := &RuneBenchmarkReconciler{Client: cl, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
