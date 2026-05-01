@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	benchv1alpha1 "github.com/lpasquali/rune-operator/api/v1alpha1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -27,6 +28,10 @@ func controllersTestScheme(t *testing.T) *runtime.Scheme {
 			return
 		}
 		if err := corev1.AddToScheme(s); err != nil {
+			sharedControllersTestSchemeErr = err
+			return
+		}
+		if err := batchv1.AddToScheme(s); err != nil {
 			sharedControllersTestSchemeErr = err
 			return
 		}

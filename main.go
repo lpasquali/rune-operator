@@ -76,16 +76,10 @@ var (
 		return reconciler.SetupWithManager(ctrlMgr)
 	}
 	setupReconcilerFn = func(mgr managerLike) error {
-		cfg := getConfigOrDieFn()
-		dynClient, err := newDynamicClientFn(cfg)
-		if err != nil {
-			return fmt.Errorf("failed to create dynamic client: %w", err)
-		}
 		return setupReconcilerWithManagerFn(&controllers.RuneBenchmarkReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
 			Recorder:      mgr.GetEventRecorderFor("rune-benchmark-controller"),
-			DynamicClient: dynClient,
 		}, mgr)
 	}
 	addClientGoSchemeFn  = clientgoscheme.AddToScheme

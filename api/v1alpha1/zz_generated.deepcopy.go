@@ -4,6 +4,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -14,27 +15,6 @@ func (in *RuneBenchmark) DeepCopyInto(out *RuneBenchmark) {
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	in.Spec.DeepCopyInto(&out.Spec)
 	in.Status.DeepCopyInto(&out.Status)
-}
-
-// DeepCopyInto copies the fields of a RuneBenchmarkSpec into another,
-// allocating independent storage for the pointer fields (InfrastructureRef
-// today; other pointer fields continue to follow the pre-existing shallow
-// behavior since no prior bug was reported against them).
-func (in *RuneBenchmarkSpec) DeepCopyInto(out *RuneBenchmarkSpec) {
-	*out = *in
-	if in.InfrastructureRef != nil {
-		ref := *in.InfrastructureRef
-		out.InfrastructureRef = &ref
-	}
-}
-
-func (in *RuneBenchmarkSpec) DeepCopy() *RuneBenchmarkSpec {
-	if in == nil {
-		return nil
-	}
-	out := new(RuneBenchmarkSpec)
-	in.DeepCopyInto(out)
-	return out
 }
 
 func (in *RuneBenchmark) DeepCopy() *RuneBenchmark {
@@ -96,7 +76,9 @@ func (in *RuneBenchmarkStatus) DeepCopyInto(out *RuneBenchmarkStatus) {
 	if in.History != nil {
 		in, out := &in.History, &out.History
 		*out = make([]RunRecord, len(*in))
-		copy(*out, *in)
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
@@ -122,9 +104,23 @@ func (in *RuneBenchmarkSpec) DeepCopyInto(out *RuneBenchmarkSpec) {
 	}
 	if in.InfrastructureRef != nil {
 		in, out := &in.InfrastructureRef, &out.InfrastructureRef
-		*out = new(CrossplaneClaimRef)
+		*out = new(corev1.ObjectReference)
 		**out = **in
 	}
+	if in.Budget.MaxCostUSD != nil {
+		in, out := &in.Budget.MaxCostUSD, &out.Budget.MaxCostUSD
+		x := (*in).DeepCopy()
+		*out = &x
+	}
+}
+
+func (in *RuneBenchmarkSpec) DeepCopy() *RuneBenchmarkSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(RuneBenchmarkSpec)
+	in.DeepCopyInto(out)
+	return out
 }
 
 func (in *Provisioning) DeepCopyInto(out *Provisioning) {
@@ -136,6 +132,6 @@ func (in *Provisioning) DeepCopyInto(out *Provisioning) {
 	}
 }
 
-func (in *CrossplaneClaimRef) DeepCopyInto(out *CrossplaneClaimRef) {
+func (in *VastAIProvisioning) DeepCopyInto(out *VastAIProvisioning) {
 	*out = *in
 }
