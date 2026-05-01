@@ -97,12 +97,12 @@ func (r *RuneBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if ready, reason, infraErr := r.checkInfrastructureRef(ctx, obj); infraErr != nil {
 		metrics.ReconcileTotal.WithLabelValues("infra_get_error").Inc()
-		r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+		r.Recorder.Event(obj, "Warning", "InfrastructureNotReady", reason)
 		logger.Error(infraErr, "infrastructureRef lookup failed", "reason", reason)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	} else if !ready {
 		metrics.ReconcileTotal.WithLabelValues("infra_not_ready").Inc()
-		r.Recorder.Eventf(obj, "Warning", "InfrastructureNotReady", reason)
+		r.Recorder.Event(obj, "Warning", "InfrastructureNotReady", reason)
 		logger.Info("infrastructureRef not ready; requeuing", "reason", reason)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
