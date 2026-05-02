@@ -19,7 +19,7 @@ jobs:
     uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@182398cc58c0358d7cd32ab97944ed6c46107a7b
 
   go:
-    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@ac515194651fe5d0e47df48ec68b045c33f743e4
+    uses: lpasquali/rune-ci/.github/workflows/go-quality.yml@72ffc70b5253c30afd47b06e81eff3f9b08c04c8
     with:
       go-version: "1.26"
       coverage-threshold: "97.0"
