@@ -36,7 +36,7 @@ jobs:
   compliance:
     needs: [security, go, container, guard]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@d1d2d2863dac135812bf98b89ae6f9bef8c33e63
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@72ffc70b5253c30afd47b06e81eff3f9b08c04c8
     with:
       needs-json: ${{ toJson(needs) }}
       merge-gate-excludes: "go,container,security,guard" # Force pass
